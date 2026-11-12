@@ -64,8 +64,12 @@ if (!fs.existsSync(viewerPath)) {
 
 const osmd = fs.readFileSync(osmdPath, "utf8");
 const viewer = fs.readFileSync(viewerPath, "utf8");
-const license = path.join(path.dirname(osmdPath), "opensheetmusicdisplay.min.js.LICENSE.txt");
-if (fs.existsSync(license)) {
+const licenseCandidates = [
+  path.join(path.dirname(osmdPath), "opensheetmusicdisplay.min.js.LICENSE.txt"),
+  path.join(root, "node_modules", "opensheetmusicdisplay", "LICENSE"),
+];
+const license = licenseCandidates.find((file) => fs.existsSync(file));
+if (license) {
   fs.mkdirSync(outDir, { recursive: true });
   fs.copyFileSync(license, path.join(outDir, "OSMD-LICENSE.txt"));
 }
