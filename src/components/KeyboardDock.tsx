@@ -96,7 +96,7 @@ export function KeyboardDock({
       >
         <View style={{ width: layout.width, height: metrics.fallH + metrics.keyH }}>
           <View style={[styles.fall, { height: metrics.fallH, width: layout.width }]}>
-            <View style={[styles.hit, { top: metrics.fallH - 3 }]} />
+            <View style={[styles.hit, waiting.length ? styles.hitWait : styles.hitPlay, { top: metrics.fallH - 4 }]} />
             {falling.map((note, index) => {
               const travel = (note.time - scoreTime) / windowSec;
               const top = metrics.fallH - travel * metrics.fallH - 16;
@@ -171,13 +171,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    height: 3,
-    backgroundColor: "#7dd3fc",
-    shadowColor: "#38bdf8",
+    height: 4,
     shadowOpacity: 1,
-    shadowRadius: 12,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
   },
+  hitPlay: { backgroundColor: "#7dd3fc", shadowColor: "#38bdf8" },
+  hitWait: { backgroundColor: "#6ee7b7", shadowColor: "#34d399" },
   beam: {
     position: "absolute",
     borderRadius: 6,

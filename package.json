@@ -12,10 +12,12 @@
     "doctor": "expo-doctor",
     "build:academy-embed": "node scripts/build-academy-embed.mjs",
     "embed:sync": "node scripts/build-academy-embed.mjs",
-    "check": "tsx src/lib/selfcheck.ts"
+    "check": "tsx src/lib/selfcheck.ts",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo-google-fonts/outfit": "^0.4.3",
+    "@motiz88/react-native-midi": "^0.0.6",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/slider": "5.0.1",
     "expo": "~54.0.38",
@@ -32,11 +34,11 @@
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",
+    "patch-package": "^8.0.1",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-audio-api": "^0.13.6",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-midi-api": "^0.2.0",
     "react-native-purchases": "^10.15.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",

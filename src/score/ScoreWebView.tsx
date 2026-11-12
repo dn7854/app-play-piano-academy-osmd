@@ -6,20 +6,20 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { config, embedPageUrl } from "../config";
 import {
   PROTOCOL_VERSION,
-  parseEmbedMessage,
+  parseEmbedEvent,
   protocolCompatible,
-  wholeFromSeconds,
+  type EmbedCommand,
+  type EmbedLayoutName,
   type LoadedScore,
-  type ViewportMessage,
+  type NoteTapped,
 } from "../lib/protocol";
 import { fonts, light } from "../theme";
 
 type Mode = "hosted" | "bundled";
 
-function xmlUrlFor(mode: Mode, remote: string | null, text: string | null) {
-  if (mode === "hosted") return remote;
-  if (text) return `data:application/xml;charset=utf-8,${encodeURIComponent(text)}`;
-  return remote;
+function dispatchScript(command: EmbedCommand) {
+  const payload = JSON.stringify(command);
+  return `window.dispatchEvent(new MessageEvent("message", { data: ${payload} })); true;`;
 }
 
 export function ScoreWebView({
@@ -29,11 +29,15 @@ export function ScoreWebView({
   offline,
   scoreTime,
   bpm,
+  timeSignature,
+  keySignature,
+  measuresPerSystem,
   playing,
   waitMode,
-  orientation,
-  device,
+  layout,
+  zoom,
   onLoaded,
+  onNoteTapped,
 }: {
   pieceId: string;
   remoteXmlUrl: string | null;
@@ -41,11 +45,15 @@ export function ScoreWebView({
   offline: boolean;
   scoreTime: number;
   bpm: number;
+  timeSignature: string;
+  keySignature: string;
+  measuresPerSystem: number | null;
   playing: boolean;
   waitMode: boolean;
-  orientation: "portrait" | "landscape";
-  device: "phone" | "tablet";
+  layout: EmbedLayoutName;
+  zoom: number;
   onLoaded: (score: LoadedScore) => void;
+  onNoteTapped: (tap: NoteTapped) => void;
 }) {
   const webRef = useRef<WebView>(null);
   const [mode, setMode] = useState<Mode>(offline ? "bundled" : "hosted");
@@ -56,8 +64,11 @@ export function ScoreWebView({
   const readyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onLoadedRef = useRef(onLoaded);
+  const onTapRef = useRef(onNoteTapped);
   onLoadedRef.current = onLoaded;
+  onTapRef.current = onNoteTapped;
   const sentLoad = useRef<string | null>(null);
+  const heardReady = useRef(false);
 
   const clearTimers = () => {
     if (readyTimer.current) clearTimeout(readyTimer.current);
@@ -71,14 +82,54 @@ export function ScoreWebView({
     fellBack.current = true;
     clearTimers();
     sentLoad.current = null;
+    heardReady.current = false;
     setNotice(message);
     setPhase("loading");
+    setHtml(null);
     setMode("bundled");
   }, []);
+
+  const send = useCallback((command: EmbedCommand) => {
+    webRef.current?.injectJavaScript(dispatchScript(command));
+  }, []);
+
+  const sendLoad = useCallback(() => {
+    if (!heardReady.current || !webRef.current) return;
+    const meta = {
+      pieceId,
+      bpm,
+      timeSignature,
+      keySignature,
+      measuresPerSystem,
+    };
+    if (remoteXmlUrl && !offline) {
+      const key = `url:${remoteXmlUrl}`;
+      if (sentLoad.current === key) return;
+      sentLoad.current = key;
+      send({ type: "load", musicXmlUrl: remoteXmlUrl, ...meta });
+      return;
+    }
+    if (!xmlText) return;
+    const key = `xml:${xmlText.length}:${pieceId}`;
+    if (sentLoad.current === key) return;
+    sentLoad.current = key;
+    const command = JSON.stringify({ type: "load", ...meta });
+    webRef.current.injectJavaScript(`
+      (function () {
+        var xml = ${JSON.stringify(xmlText)};
+        var url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
+        var command = ${command};
+        command.musicXmlUrl = url;
+        window.dispatchEvent(new MessageEvent("message", { data: command }));
+      })();
+      true;
+    `);
+  }, [bpm, keySignature, measuresPerSystem, offline, pieceId, remoteXmlUrl, send, timeSignature, xmlText]);
 
   useEffect(() => {
     fellBack.current = offline;
     sentLoad.current = null;
+    heardReady.current = false;
     setPhase("loading");
     setHtml(null);
     setMode(offline ? "bundled" : "hosted");
@@ -115,51 +166,32 @@ export function ScoreWebView({
     };
   }, [mode, pieceId]);
 
-  const post = useCallback((message: object) => {
-    webRef.current?.postMessage(JSON.stringify(message));
-  }, []);
+  useEffect(() => {
+    if (!heardReady.current) return;
+    send({ type: "setLayout", layout });
+  }, [layout, send, phase]);
 
-  const sendLoad = useCallback(() => {
-    const musicXmlUrl = xmlUrlFor(mode, remoteXmlUrl, xmlText);
-    if (!musicXmlUrl || !webRef.current) return;
-    const key = `${mode}:${musicXmlUrl}`;
-    if (sentLoad.current === key) return;
-    sentLoad.current = key;
-    post({ type: "load", musicXmlUrl });
-  }, [mode, post, remoteXmlUrl, xmlText]);
+  useEffect(() => {
+    if (!heardReady.current) return;
+    send({ type: "setPlaybackActive", active: playing });
+  }, [playing, send]);
+
+  useEffect(() => {
+    if (!heardReady.current) return;
+    send({ type: "setZoom", zoom });
+  }, [zoom, send]);
+
+  useEffect(() => {
+    if (!heardReady.current) return;
+    send({ type: "cursor", time: scoreTime, color: waitMode ? "green" : "sky" });
+  }, [scoreTime, send, waitMode]);
 
   useEffect(() => {
     sendLoad();
   }, [sendLoad]);
 
-  const sendTransport = useCallback(() => {
-    const safeBpm = bpm > 0 ? bpm : 120;
-    post({
-      type: "transport",
-      seconds: scoreTime,
-      whole: wholeFromSeconds(scoreTime, safeBpm),
-      bpm: safeBpm,
-      playing,
-      waitMode,
-    });
-  }, [bpm, playing, post, scoreTime, waitMode]);
-
-  const sendViewport = useCallback(() => {
-    const message: ViewportMessage = { type: "viewport", orientation, device, playing };
-    post(message);
-  }, [device, orientation, playing, post]);
-
-  useEffect(() => {
-    if (phase === "loading" && mode === "hosted") return;
-    sendTransport();
-  }, [sendTransport, phase, mode]);
-
-  useEffect(() => {
-    sendViewport();
-  }, [sendViewport]);
-
   function onMessage(event: WebViewMessageEvent) {
-    const message = parseEmbedMessage(event.nativeEvent.data);
+    const message = parseEmbedEvent(event.nativeEvent.data);
     if (!message) return;
     if (message.kind === "ready") {
       if (mode === "hosted" && !protocolCompatible(message.protocolVersion)) {
@@ -167,8 +199,11 @@ export function ScoreWebView({
         return;
       }
       if (readyTimer.current) clearTimeout(readyTimer.current);
+      heardReady.current = true;
+      send({ type: "setLayout", layout });
+      send({ type: "setPlaybackActive", active: playing });
+      send({ type: "setZoom", zoom });
       sendLoad();
-      sendViewport();
       if (mode === "hosted" && !loadedTimer.current) {
         loadedTimer.current = setTimeout(() => {
           fallback("The hosted score did not finish loading. Using the copy saved in the app.");
@@ -180,8 +215,11 @@ export function ScoreWebView({
       if (loadedTimer.current) clearTimeout(loadedTimer.current);
       setPhase("ready");
       onLoadedRef.current(message.score);
-      sendTransport();
-      sendViewport();
+      send({ type: "cursor", time: scoreTime, color: waitMode ? "green" : "sky" });
+      return;
+    }
+    if (message.kind === "noteTapped") {
+      onTapRef.current(message.tap);
       return;
     }
     if (message.kind === "error") {
@@ -193,12 +231,12 @@ export function ScoreWebView({
     }
   }
 
-  const missingOffline = mode === "bundled" && !xmlText && !remoteXmlUrl;
+  const missingOffline = mode === "bundled" && !xmlText && (!remoteXmlUrl || offline);
   const source =
     mode === "hosted"
       ? { uri: embedPageUrl(pieceId) }
       : html
-        ? { html, baseUrl: "https://d8r-academy.local" }
+        ? { html, baseUrl: "https://danijelbrecelj.com" }
         : null;
 
   return (
@@ -209,14 +247,14 @@ export function ScoreWebView({
           ref={webRef}
           source={source}
           onMessage={onMessage}
+          onLoadEnd={() => {
+            webRef.current?.injectJavaScript(dispatchScript({ type: "hello" }));
+          }}
           onError={() => fallback("The score page could not be reached.")}
           onHttpError={(event) => {
             if (event.nativeEvent.statusCode >= 400) {
               fallback(`The hosted score returned ${event.nativeEvent.statusCode}. Using the copy saved in the app.`);
             }
-          }}
-          onLoadEnd={() => {
-            if (mode === "bundled") sendLoad();
           }}
           originWhitelist={["*"]}
           javaScriptEnabled

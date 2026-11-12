@@ -89,62 +89,27 @@ Fallback to the bundled page happens when:
 - `ready.protocolVersion` is not `1`
 - `loaded` does not arrive within 12 seconds of a compatible `ready`
 
-MusicXML, MIDI, and MP3 files for pieces that have been opened are stored under the app cache. Offline, the bundled page receives `load` with a `musicXmlUrl`. That URL is the remote file when it can be fetched, and a `data:` URL of the cached MusicXML when it cannot.
+MusicXML, MIDI, and MP3 files for pieces that have been opened are stored under the app cache. Offline, the bundled page receives `load` with a blob `musicXmlUrl` built from the cached MusicXML. `data:` URLs are not accepted by the embed.
 
 ### Protocol version 1
 
-Messages are JSON. The embed posts them with `window.ReactNativeWebView.postMessage`. The app posts them with `webView.postMessage`.
+The types are `src/lib/academy-embed-protocol.ts`, copied from the website. The embed posts JSON through `ReactNativeWebView.postMessage`. The app delivers commands by dispatching a `message` event inside the WebView. Every embed message includes `protocolVersion: 1`.
 
-`seconds = whole * 240 / bpm`. `whole` is an OSMD whole-note timestamp (a quarter note is `0.25`).
+`seconds = whole * 240 / bpm`.
 
-Embed to app:
-
-```json
-{ "type": "ready", "protocolVersion": 1 }
-```
-
-```json
-{
-  "type": "loaded",
-  "protocolVersion": 1,
-  "bpm": 50,
-  "measures": [{ "number": 1, "whole": 0, "seconds": 0 }],
-  "steps": [
-    {
-      "whole": 0,
-      "seconds": 0,
-      "durationWhole": 0.25,
-      "durationSeconds": 1.2,
-      "measure": 1,
-      "notes": [
-        { "midi": 61, "whole": 0, "seconds": 0, "durationWhole": 0.25, "durationSeconds": 1.2, "measure": 1, "staff": null }
-      ]
-    }
-  ]
-}
-```
-
-```json
-{ "type": "error", "message": "The score could not be rendered." }
-```
+Embed to app: `ready`, `loaded` (measures and cursor steps with `pitches`), `noteTapped`, `error`.
 
 App to embed:
 
-```json
-{ "type": "load", "musicXmlUrl": "https://example.com/score.musicxml" }
-```
+- `hello` asks the document to send `ready` again.
+- `load` with `musicXmlUrl` (https, http, blob, or a same-origin path), plus optional `pieceId`, `bpm`, `timeSignature`, `keySignature`, `measuresPerSystem`.
+- `setLayout`: `portrait`, `landscape-phone`, or `landscape-tablet`.
+- `cursor`: `time` and/or `noteIndex`, color `sky` or `green`.
+- `seek`: `time` in seconds.
+- `setPlaybackActive`: pinch-zoom is ignored while `active` is true, and the sheet follows the playhead.
+- `setZoom`: multiplier from `0.5` to `3`.
 
-```json
-{ "type": "transport", "seconds": 1.2, "whole": 0.25, "bpm": 50, "playing": true, "waitMode": false }
-```
-
-```json
-{ "type": "viewport", "orientation": "landscape", "device": "phone", "playing": true }
-```
-
-`transport` moves the sky cursor (green while wait-to-play is on) and scrolls the active system into view. `viewport` chooses the A4 fit: full page in portrait, one staff on a phone in landscape, several staves on a tablet in landscape. The page ignores pinch gestures while `playing` is true.
-
-The note steps in `loaded` are what the app plays and what wait-to-play expects. A parsed MIDI file is used only when the embed has not sent steps yet.
+A tap on the score posts `noteTapped` and does not move the highlight until the app replies with `seek` or `cursor`. Wait to play uses the green cursor. Play mode uses sky. Play mode and wait to play are one switch, as in the previous app: play mode runs the piece, wait mode holds on the current chord until any one of its notes is played.
 
 ## EAS
 
@@ -181,4 +146,4 @@ npx expo-doctor
 
 ## Notes on the sources
 
-`app-keyboard-scores` and `app.danijelbrecelj.com` are private and were not readable here. Pitch detection follows the public D8R Metronome & Tuner app (`src/lib/pitch.ts`, `src/pitch/usePitch.ts`). The piano samples are the same set that app ships. MIDI uses `react-native-midi-api` (CoreMIDI / USB) because the old native patch could not be copied. The score theme, cursor colors, tempo range, wait-to-play rule, and OSMD page setup follow the live academy-studio player. The embed protocol follows the backend contract: `ready.protocolVersion`, `load.musicXmlUrl`, and `loaded` measures plus note steps.
+The bundled score is the website's `public/academy-embed/index.html`. MIDI uses `@motiz88/react-native-midi` with `patches/@motiz88+react-native-midi+0.0.6.patch` and `src/hooks/useMidiController.ts` from the previous app. The sampler is `src/hooks/usePianoSound.ts` and `src/lib/sampleMapper.ts`, loading `assets/audio/piano/<note>.mp3`. Those mp3s and the three icon files are stand-ins until the owner copies the real binaries in; the filenames match the old app. The 20-second premium gate is `isPreviewLocked` from the website: automatic playback stops at 20 seconds, and seeking into that region opens the paywall. Wait mode is not gated, matching the website player.

@@ -1,19 +1,19 @@
 import { router } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
 import Slider from "@react-native-community/slider";
 import * as Network from "expo-network";
-import { ApiError, downloadPiecePdf, fetchCollection, fetchPiece } from "../api/client";
+import { ApiError, fetchCollection, fetchPdfUrl, fetchPiece } from "../api/client";
 import { cachePath, cachePiece, readPieceMeta, type CachedPiece } from "../api/cache";
 import type { PieceDetail, PieceSummary } from "../api/types";
 import { KeyboardDock } from "./KeyboardDock";
 import { Paywall } from "./Paywall";
 import { SidePanel } from "./SidePanel";
 import { TempoModal } from "./TempoModal";
-import { useMidi } from "../midi/useMidi";
-import { flattenSteps, type LoadedScore } from "../lib/protocol";
+import { useMidiController } from "../hooks/useMidiController";
+import { notesFromEmbed, type EmbedLayoutName, type LoadedScore } from "../lib/protocol";
 import { matchAnyExpected, type TimedNote } from "../lib/notes";
 import { clampTempo } from "../lib/tempo";
 import { usePlayback } from "../playback/usePlayback";
@@ -22,8 +22,31 @@ import { usePitchSensitivity } from "../pitch/sensitivity";
 import { usePurchases } from "../purchases";
 import { setAudioSession } from "../audio/session";
 import { config } from "../config";
+import * as FileSystem from "expo-file-system/legacy";
 import { ScoreWebView } from "../score/ScoreWebView";
 import { TABLET_MIN, fonts, light } from "../theme";
+
+function groupBacking(files: { label: string; bpm: number | null; url: string }[]) {
+  const groups: { label: string; files: { label: string; bpm: number | null; url: string }[] }[] = [];
+  for (const file of files) {
+    const found = groups.find((group) => group.label === file.label);
+    if (found) found.files.push(file);
+    else groups.push({ label: file.label, files: [file] });
+  }
+  return groups;
+}
+
+function pickBacking(
+  group: { files: { label: string; bpm: number | null; url: string }[] } | undefined,
+  targetBpm: number,
+) {
+  if (!group || group.files.length === 0) return null;
+  const numeric = group.files.filter((file) => file.bpm != null && file.bpm > 0);
+  const pool = numeric.length ? numeric : group.files;
+  return pool.reduce((best, file) =>
+    Math.abs((file.bpm ?? targetBpm) - targetBpm) < Math.abs((best.bpm ?? targetBpm) - targetBpm) ? file : best,
+  );
+}
 
 function formatTime(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -44,8 +67,9 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [panel, setPanel] = useState(dockPanel);
-  const [playMode, setPlayMode] = useState(true);
-  const [waitMode, setWaitMode] = useState(false);
+  const [playMode, setPlayMode] = useState(false);
+  const waitMode = !playMode;
+  const [zoom, setZoom] = useState(1);
   const [selectedBpm, setSelectedBpm] = useState(120);
   const [backingIndex, setBackingIndex] = useState(-1);
   const [tempoOpen, setTempoOpen] = useState(false);
@@ -75,7 +99,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         if (cancel) return;
         setPiece(detail);
         setSelectedBpm(detail.tempo || 120);
-        const orchestra = detail.mp3Files.findIndex((file) => !/piano/i.test(file.label));
+        const orchestra = groupBacking(detail.mp3Files).findIndex((group) => !/piano/i.test(group.label));
         setBackingIndex(orchestra);
         const files = await cachePiece(detail);
         if (!cancel) setCached(files);
@@ -105,14 +129,16 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   }, [collection, id]);
 
   const pieceBpm = score?.bpm || piece?.tempo || 120;
-  const stepNotes = useMemo(() => (score ? flattenSteps(score.steps) : []), [score]);
+  const stepNotes = useMemo(() => (score ? notesFromEmbed(score.notes) : []), [score]);
   const notes: TimedNote[] = stepNotes.length ? stepNotes : cached?.midiNotes ?? [];
   const duration = Math.max(
-    score?.steps.reduce((max, step) => Math.max(max, step.seconds + step.durationSeconds), 0) ?? 0,
+    score?.notes.reduce((max, note) => Math.max(max, note.seconds), 0) ?? 0,
     cached?.midiDuration ?? 0,
   );
-  const backingFile = backingIndex >= 0 ? cached?.mp3[backingIndex] : null;
-  const backing = backingFile ? { uri: backingFile.localUri || backingFile.remoteUrl, bpm: backingFile.bpm } : null;
+  const groups = useMemo(() => groupBacking(piece?.mp3Files ?? []), [piece]);
+  const chosen = pickBacking(groups[backingIndex], clampTempo(pieceBpm, selectedBpm));
+  const cachedTrack = chosen ? cached?.mp3.find((file) => file.remoteUrl === chosen.url) : null;
+  const backing = chosen ? { uri: cachedTrack?.localUri || chosen.url, bpm: chosen.bpm } : null;
   const gated = Boolean(piece?.isPremium) && !pro;
 
   const playback = usePlayback({
@@ -131,9 +157,10 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const pitch = usePitch(micOn, sensitivity);
   const onNoteRef = useRef(playback.onNote);
   onNoteRef.current = playback.onNote;
-  const midi = useMidi((note, down) => {
-    if (down) onNoteRef.current(note, "midi");
-  });
+  const onMidi = useCallback((event: { type: string; noteNumber: number }) => {
+    if (event.type === "note-on") onNoteRef.current(event.noteNumber, "midi");
+  }, []);
+  const midi = useMidiController(onMidi);
   const micAt = useRef(0);
 
   useEffect(() => {
@@ -157,13 +184,15 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   async function onPdf() {
     if (!piece) return;
     setPdfError(null);
-    if (!pro) {
+    if (piece.pdf.requiresPurchase && !pro) {
       setPaywall(true);
       return;
     }
     try {
-      const destination = cachePath(piece.id, "pdf", piece.pdfUrl || piece.id);
-      const uri = await downloadPiecePdf(piece.id, appUserId, destination.endsWith(".pdf") ? destination : `${destination}.pdf`);
+      const pdfUrl = await fetchPdfUrl(piece.id, appUserId);
+      const destination = cachePath(piece.id, "pdf", pdfUrl);
+      const file = await FileSystem.downloadAsync(pdfUrl, destination.endsWith(".pdf") ? destination : `${destination}.pdf`);
+      const uri = file.uri;
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : "The PDF could not be downloaded.");
@@ -195,26 +224,28 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       composer={piece.composer}
       playMode={playMode}
       waitMode={waitMode}
+      zoom={zoom}
       bpm={shownBpm}
-      backingLabels={piece.mp3Files.map((file) => file.label)}
+      backingLabels={groups.map((group) => group.label)}
       backingIndex={backingIndex}
       micOn={micOn}
       sensitivity={sensitivity}
       tablet={tablet}
       pitch={pitch}
-      midiPorts={midi.ports}
-      midiError={midi.error}
-      midiReady={midi.ready}
-      pdfEnabled={piece.hasPdf}
+      midiPorts={midi.isConnected ? [{ id: "midi", name: midi.deviceName }] : []}
+      midiError={midi.isConnected ? null : midi.deviceName === "Disconnected" ? null : midi.deviceName}
+      midiReady={midi.isConnected}
+      pdfEnabled={piece.pdf.available}
       pro={pro}
       others={others}
-      onPlayMode={() => setPlayMode((value) => !value)}
-      onWait={() => setWaitMode((value) => !value)}
+      onPlayMode={() => setPlayMode(true)}
+      onWait={() => setPlayMode(false)}
+      onZoom={setZoom}
       onTempo={() => setTempoOpen(true)}
       onBacking={setBackingIndex}
       onMic={() => setMicOn((value) => !value)}
       onSensitivity={setSensitivity}
-      onMidi={() => void midi.connect()}
+      onMidi={() => undefined}
       onPdf={() => void onPdf()}
       onPiece={(next) => router.replace({ pathname: "/piece/[id]", params: { id: next.slug || next.id, collection: collection ?? "" } })}
       onClose={dockPanel ? undefined : () => setPanel(false)}
@@ -250,11 +281,15 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             offline={offline}
             scoreTime={playback.scoreTime}
             bpm={pieceBpm}
+            timeSignature={piece.timeSignature}
+            keySignature={piece.keySignature}
+            measuresPerSystem={piece.measuresPerSystem}
             playing={playback.playing}
             waitMode={waitMode}
-            orientation={landscape ? "landscape" : "portrait"}
-            device={tablet ? "tablet" : "phone"}
+            layout={(landscape ? (tablet ? "landscape-tablet" : "landscape-phone") : "portrait") satisfies EmbedLayoutName}
+            zoom={zoom}
             onLoaded={setScore}
+            onNoteTapped={(tap) => playback.seek(tap.time, playback.playing)}
           />
           <View style={styles.seek}>
             <Pressable onPress={playback.toggle} style={[styles.play, playback.playing && styles.playOn]} accessibilityLabel={playback.playing ? "Pause" : "Play"}>

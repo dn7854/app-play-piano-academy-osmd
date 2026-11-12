@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, fetchCollection, fetchCollections, fetchPieces } from "../api/client";
 import { recallJson, rememberJson } from "../api/cache";
-import type { Collection, PieceSummary } from "../api/types";
+import type { CollectionDetail, CollectionSummary, PieceSummary } from "../api/types";
 import { dark, fonts } from "../theme";
 
 function openPiece(piece: PieceSummary, collection?: string) {
@@ -28,7 +28,7 @@ function Card({ title, subtitle, meta, premium, onPress }: { title: string; subt
 
 export function LibraryScreen({ slug }: { slug?: string }) {
   const insets = useSafeAreaInsets();
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
   const [pieces, setPieces] = useState<PieceSummary[]>([]);
   const [title, setTitle] = useState(slug ? "Collection" : "Library");
   const [description, setDescription] = useState<string | null>(null);
@@ -42,8 +42,8 @@ export function LibraryScreen({ slug }: { slug?: string }) {
     try {
       if (slug) {
         const detail = await fetchCollection(slug);
-        setTitle(detail.collection.title);
-        setDescription(detail.collection.description);
+        setTitle(detail.title);
+        setDescription(detail.description);
         setPieces(detail.pieces);
         setCollections([]);
         await rememberJson(`collection-${slug}`, detail);
@@ -57,12 +57,12 @@ export function LibraryScreen({ slug }: { slug?: string }) {
       setFromCache(false);
     } catch (err) {
       const cached = slug
-        ? await recallJson<{ collection: Collection; pieces: PieceSummary[] }>(`collection-${slug}`)
-        : await recallJson<{ collections: Collection[]; pieces: PieceSummary[] }>("home");
+        ? await recallJson<CollectionDetail>(`collection-${slug}`)
+        : await recallJson<{ collections: CollectionSummary[]; pieces: PieceSummary[] }>("home");
       if (cached && "pieces" in cached) {
-        if ("collection" in cached && cached.collection) {
-          setTitle(cached.collection.title);
-          setDescription(cached.collection.description);
+        if ("title" in cached && slug) {
+          setTitle(cached.title);
+          setDescription(cached.description);
           setPieces(cached.pieces);
         } else if ("collections" in cached) {
           setCollections(cached.collections);
@@ -118,7 +118,7 @@ export function LibraryScreen({ slug }: { slug?: string }) {
             key={piece.id}
             title={piece.title}
             subtitle={piece.composer || "Piano"}
-            meta={piece.level || undefined}
+            meta={piece.difficulty || undefined}
             premium={piece.isPremium}
             onPress={() => openPiece(piece, slug)}
           />

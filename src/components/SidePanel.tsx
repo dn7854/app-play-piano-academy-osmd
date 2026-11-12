@@ -1,8 +1,9 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Slider from "@react-native-community/slider";
 import type { PieceSummary } from "../api/types";
-import type { MidiPort } from "../midi/useMidi";
 import type { PitchReading } from "../pitch/usePitch";
+
+type MidiPort = { id: string; name: string };
 import { fonts, light } from "../theme";
 
 function Toggle({
@@ -39,6 +40,7 @@ export function SidePanel({
   backingLabels,
   backingIndex,
   micOn,
+  zoom,
   sensitivity,
   tablet,
   pitch,
@@ -53,6 +55,7 @@ export function SidePanel({
   onTempo,
   onBacking,
   onMic,
+  onZoom,
   onSensitivity,
   onMidi,
   onPdf,
@@ -67,6 +70,7 @@ export function SidePanel({
   backingLabels: string[];
   backingIndex: number;
   micOn: boolean;
+  zoom: number;
   sensitivity: number;
   tablet: boolean;
   pitch: PitchReading;
@@ -81,6 +85,7 @@ export function SidePanel({
   onTempo: () => void;
   onBacking: (index: number) => void;
   onMic: () => void;
+  onZoom: (value: number) => void;
   onSensitivity: (value: number) => void;
   onMidi: () => void;
   onPdf: () => void;
@@ -104,6 +109,22 @@ export function SidePanel({
       <ScrollView contentContainerStyle={styles.body}>
         <Toggle title="Play mode" detail="The app plays the written piano part." on={playMode} tone="sky" onPress={onPlayMode} />
         <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
+        <View style={styles.sliderBlock}>
+          <View style={styles.sliderHead}>
+            <Text style={styles.section}>Score zoom</Text>
+            <Text style={styles.rowValue}>{Math.round(zoom * 100)}%</Text>
+          </View>
+          <Slider
+            minimumValue={0.5}
+            maximumValue={3}
+            step={0.05}
+            value={zoom}
+            minimumTrackTintColor="#0284c7"
+            maximumTrackTintColor="#e2e8f0"
+            thumbTintColor="#0284c7"
+            onSlidingComplete={onZoom}
+          />
+        </View>
         <Pressable style={styles.row} onPress={onTempo}>
           <Text style={styles.rowLabel}>Tempo</Text>
           <Text style={styles.rowValue}>{bpm} BPM</Text>

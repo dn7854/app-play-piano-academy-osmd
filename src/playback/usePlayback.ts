@@ -1,7 +1,8 @@
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playClick, playMidiNote, preloadPiano } from "../audio/piano";
-import { config } from "../config";
+import { playClick } from "../audio/piano";
+import { playPianoNote } from "../hooks/usePianoSound";
+import { isPreviewLocked } from "../lib/preview-limit";
 import { nextEventTime, soundingNotes, waitingNotes, type TimedNote } from "../lib/notes";
 import { backingPlaybackRate, countIn, tempoRatio } from "../lib/tempo";
 
@@ -159,14 +160,15 @@ export function usePlayback({
 
   const seek = useCallback(
     (seconds: number, resume = playingRef.current) => {
-      const limit = live.current.gated ? Math.min(live.current.duration, config.previewSeconds) : live.current.duration;
-      let next = Math.max(0, Math.min(limit, seconds));
-      if (live.current.gated && seconds > config.previewSeconds + 0.01) {
-        next = config.previewSeconds;
+      const locked = !live.current.waitMode && isPreviewLocked(live.current.gated, seconds);
+      const limit = locked ? Math.min(live.current.duration, 20) : live.current.duration;
+      let next = Math.max(0, Math.min(limit || seconds, seconds));
+      if (locked) {
+        next = Math.min(next, 20);
         paywallLatch.current = true;
         onPaywallRef.current();
       }
-      if (next < config.previewSeconds - 0.4) paywallLatch.current = false;
+      if (!isPreviewLocked(live.current.gated, next)) paywallLatch.current = false;
       scoreRef.current = next;
       triggered.current = new Set(notesRef.current.map((note, index) => (note.time < next - 0.03 ? index : -1)).filter((index) => index >= 0));
       syncBacking(next, resume && !live.current.waitMode);
@@ -216,7 +218,7 @@ export function usePlayback({
       stop();
       return;
     }
-    if (live.current.gated && scoreRef.current >= config.previewSeconds - 0.05) {
+    if (!live.current.waitMode && isPreviewLocked(live.current.gated, scoreRef.current)) {
       onPaywallRef.current();
       return;
     }
@@ -225,7 +227,7 @@ export function usePlayback({
 
   const onNote = useCallback(
     (midi: number, source: "key" | "midi" | "mic") => {
-      if (source !== "mic") void playMidiNote(midi, source === "midi" ? 110 : 92, 0.55);
+      if (source !== "mic") playPianoNote(midi, source === "midi" ? 0.95 : 0.8);
       const now = Date.now();
       if (!playingRef.current || !live.current.waitMode) {
         publish({ success: [], wrong: [] }, true);
@@ -258,8 +260,6 @@ export function usePlayback({
     triggered.current = new Set(
       notes.map((note, index) => (note.time < scoreRef.current - 0.03 ? index : -1)).filter((index) => index >= 0),
     );
-    const unique = [...new Set(notes.map((note) => note.note))].slice(0, 36);
-    void preloadPiano(unique);
   }, [notes]);
 
   useEffect(() => {
@@ -303,8 +303,8 @@ export function usePlayback({
         }
       }
       scoreRef.current += dt * tempoRatio(state.pieceBpm, state.selectedBpm);
-      if (state.gated && scoreRef.current >= config.previewSeconds) {
-        scoreRef.current = config.previewSeconds;
+      if (!state.waitMode && isPreviewLocked(state.gated, scoreRef.current)) {
+        scoreRef.current = 20;
         if (!paywallLatch.current) {
           paywallLatch.current = true;
           onPaywallRef.current();
@@ -323,7 +323,7 @@ export function usePlayback({
           if (triggered.current.has(index)) return;
           if (note.time <= scoreRef.current && note.time > scoreRef.current - 0.12) {
             triggered.current.add(index);
-            void playMidiNote(note.note, 100, note.duration / Math.max(0.45, tempoRatio(state.pieceBpm, state.selectedBpm)));
+            playPianoNote(note.note, 0.85);
           } else if (note.time < scoreRef.current - 0.12) {
             triggered.current.add(index);
           }
