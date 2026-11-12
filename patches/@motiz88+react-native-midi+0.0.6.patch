@@ -1,0 +1,14 @@
+diff --git a/node_modules/@motiz88/react-native-midi/android/src/main/java/com/motiz88/reactnativemidi/ReactNativeMidiModule.kt b/node_modules/@motiz88/react-native-midi/android/src/main/java/com/motiz88/reactnativemidi/ReactNativeMidiModule.kt
+index 90222d2..b316bc1 100644
+--- a/node_modules/@motiz88/react-native-midi/android/src/main/java/com/motiz88/reactnativemidi/ReactNativeMidiModule.kt
++++ b/node_modules/@motiz88/react-native-midi/android/src/main/java/com/motiz88/reactnativemidi/ReactNativeMidiModule.kt
+@@ -35,7 +35,8 @@ fun Promise.butFirst(mapper: (Any?) -> Any?): Promise {
+             nextPromise.resolve(result)
+         }
+ 
+-        override fun reject(code: String, message: String?, cause: Throwable?) {
++        // Fixes compilation mismatch across Expo SDK 50+ versions:
++        override fun reject(code: String?, message: String?, cause: Throwable?) {
+             nextPromise.reject(code, message, cause)
+         }
+     }
