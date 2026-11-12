@@ -4,7 +4,7 @@
     "slug": "d8r-piano-academy",
     "owner": "danijelbrecelj",
     "scheme": "d8rpianoacademy",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -18,10 +18,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danijelbrecelj.playpianoacademymobile",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "D8R Piano Academy listens for the notes you play on an acoustic piano so Wait to play can move ahead. The audio stays on this device.",
-        "UIBackgroundModes": ["audio"],
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -34,7 +36,9 @@
       },
       "permissions": [
         "RECORD_AUDIO",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
@@ -52,7 +56,9 @@
             "android.permission.MODIFY_AUDIO_SETTINGS"
           ],
           "androidForegroundService": false,
-          "androidFSTypes": ["mediaPlayback"],
+          "androidFSTypes": [
+            "mediaPlayback"
+          ],
           "disableFFmpeg": true
         }
       ],
@@ -60,6 +66,12 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c1d6ce80-c702-438e-b6bf-36dd70fc7452"
+      }
     }
   }
 }
