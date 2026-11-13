@@ -1,20 +1,18 @@
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
-index 938f985..edeb65a 100644
+index 938f985..36dec64 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
-@@ -407,13 +407,12 @@ public class AudioModule: Module {
-   }
+@@ -408,12 +408,13 @@ public class AudioModule: Module {
  
    private func handleInterruptionEnded(with options: AVAudioSession.InterruptionOptions) {
--    do {
+     do {
 -      try AVAudioSession.sharedInstance().setActive(true)
 -      if options.contains(.shouldResume) {
 -        resumeInterruptedPlayers()
 -      }
--    } catch {
--      print("Failed to reactivate audio session: \(error)")
-+    if !AudioSessionGuard.setActive(true, options: [], error: nil) {
-+      print("Failed to reactivate audio session")
++      try AudioSessionGuard.setActive(true, options: [])
+     } catch {
+       print("Failed to reactivate audio session: \(error)")
 +      return
 +    }
 +    if options.contains(.shouldResume) {
@@ -22,24 +20,24 @@ index 938f985..edeb65a 100644
      }
    }
  
-@@ -508,12 +507,11 @@ public class AudioModule: Module {
+@@ -508,12 +509,13 @@ public class AudioModule: Module {
        pauseAllPlayers()
      }
  
--    do {
++    let options: AVAudioSession.SetActiveOptions = isActive ? [] : [.notifyOthersOnDeactivation]
+     do {
 -      try AVAudioSession.sharedInstance().setActive(isActive, options: isActive ? [] : [.notifyOthersOnDeactivation])
 -      sessionIsActive = isActive
--    } catch {
++      try AudioSessionGuard.setActive(isActive, options: options)
+     } catch {
 -      throw AudioStateException(error.localizedDescription)
-+    let options: AVAudioSession.SetActiveOptions = isActive ? [] : [.notifyOthersOnDeactivation]
-+    if !AudioSessionGuard.setActive(isActive, options: options, error: nil) {
 +      throw AudioStateException("The audio session could not change activity.")
      }
 +    sessionIsActive = isActive
    }
  
    private func setAudioMode(mode: AudioMode) throws {
-@@ -574,15 +572,15 @@ public class AudioModule: Module {
+@@ -574,15 +576,19 @@ public class AudioModule: Module {
        sessionOptions = categoryOptions
      }
  
@@ -47,38 +45,38 @@ index 938f985..edeb65a 100644
 -      try session.setCategory(category, mode: .default)
 -    } else {
 -      try session.setCategory(category, options: sessionOptions)
-+    if !AudioSessionGuard.setCategory(category, mode: .default, options: sessionOptions, error: nil) {
++    do {
++      try AudioSessionGuard.setCategory(category, mode: .default, options: sessionOptions)
++    } catch {
 +      throw AudioStateException("The audio session category was rejected.")
      }
    }
  
    private func activateSession() throws {
 -    try AVAudioSession.sharedInstance().setActive(true)
-+    if !AudioSessionGuard.setActive(true, options: [], error: nil) {
++    do {
++      try AudioSessionGuard.setActive(true, options: [])
++    } catch {
 +      throw AudioStateException("The audio session could not be activated.")
 +    }
    }
  
    private func deactivateSession() {
-@@ -593,10 +591,8 @@ public class AudioModule: Module {
-       }
+@@ -594,7 +600,7 @@ public class AudioModule: Module {
        let hasActivePlayers = self.registry.allPlayers.values.contains { $0.isPlaying }
        if !hasActivePlayers {
--        do {
+         do {
 -          try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
--        } catch {
--          print("Failed to deactivate audio session: \(error)")
-+        if !AudioSessionGuard.setActive(false, options: [.notifyOthersOnDeactivation], error: nil) {
-+          print("Failed to deactivate audio session")
++          try AudioSessionGuard.setActive(false, options: [.notifyOthersOnDeactivation])
+         } catch {
+           print("Failed to deactivate audio session: \(error)")
          }
-       }
-     }
 diff --git a/node_modules/expo-audio/ios/AudioSessionGuard.h b/node_modules/expo-audio/ios/AudioSessionGuard.h
 new file mode 100644
-index 0000000..0875468
+index 0000000..adcb916
 --- /dev/null
 +++ b/node_modules/expo-audio/ios/AudioSessionGuard.h
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,29 @@
 +#import <AVFoundation/AVFoundation.h>
 +#import <Foundation/Foundation.h>
 +
@@ -86,6 +84,14 @@ index 0000000..0875468
 +
 +/// AVAudioSession raises NSException for illegal category/mode/option combinations.
 +/// Swift `try` does not catch that, so these calls go through @try/@catch.
++///
++/// A BOOL method with a trailing NSError ** is imported as `throws` returning Void.
++/// The error parameter is removed:
++///   try AudioSessionGuard.setCategory(_:mode:options:)
++///   try AudioSessionGuard.setActive(_:options:)
++/// Returning NO with a nil error traps that bridge, so every failure writes an NSError.
++/// This header is compiled into the ExpoAudio module (podspec `source_files` includes
++/// `**/*.{h,m,swift}`), so Swift resolves AudioSessionGuard the same way as AudioTapProcessor.
 +@interface AudioSessionGuard : NSObject
 +
 ++ (BOOL)setCategory:(AVAudioSessionCategory)category
@@ -102,11 +108,23 @@ index 0000000..0875468
 +NS_ASSUME_NONNULL_END
 diff --git a/node_modules/expo-audio/ios/AudioSessionGuard.m b/node_modules/expo-audio/ios/AudioSessionGuard.m
 new file mode 100644
-index 0000000..12fa273
+index 0000000..25c167f
 --- /dev/null
 +++ b/node_modules/expo-audio/ios/AudioSessionGuard.m
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,64 @@
 +#import "AudioSessionGuard.h"
++
++/// Swift imports BOOL + NSError ** as throws and traps if we return NO with a nil error.
++static void ExpoAudioFillError(NSError *__autoreleasing *error, NSString *message) {
++  if (error == nil || *error != nil) {
++    return;
++  }
++  *error = [NSError errorWithDomain:@"ExpoAudio"
++                               code:-1
++                           userInfo:@{
++                             NSLocalizedDescriptionKey : message ?: @"Audio session failed",
++                           }];
++}
 +
 +@implementation AudioSessionGuard
 +
@@ -116,46 +134,45 @@ index 0000000..12fa273
 +              error:(NSError **)error
 +{
 +  if (category == nil || mode == nil) {
-+    if (error != nil) {
-+      *error = [NSError errorWithDomain:@"ExpoAudio"
-+                                   code:-1
-+                               userInfo:@{NSLocalizedDescriptionKey : @"Invalid audio category or mode"}];
-+    }
++    ExpoAudioFillError(error, @"Invalid audio category or mode");
 +    return NO;
 +  }
 +
++  BOOL didSet = NO;
 +  @try {
-+    return [[AVAudioSession sharedInstance] setCategory:category mode:mode options:options error:error];
++    didSet = [[AVAudioSession sharedInstance] setCategory:category
++                                                     mode:mode
++                                                  options:options
++                                                    error:error];
 +  } @catch (NSException *exception) {
 +    NSLog(@"[ExpoAudio] setCategory threw %@: %@", exception.name, exception.reason);
-+    if (error != nil && *error == nil) {
-+      *error = [NSError errorWithDomain:@"ExpoAudio"
-+                                   code:-1
-+                               userInfo:@{
-+                                 NSLocalizedDescriptionKey : exception.reason ?: exception.name ?: @"setCategory threw",
-+                               }];
-+    }
-+    return NO;
++    didSet = NO;
++    ExpoAudioFillError(error, exception.reason ?: exception.name ?: @"setCategory threw");
 +  }
++
++  if (!didSet) {
++    ExpoAudioFillError(error, @"setCategory failed");
++  }
++  return didSet;
 +}
 +
 ++ (BOOL)setActive:(BOOL)active
 +          options:(AVAudioSessionSetActiveOptions)options
 +            error:(NSError **)error
 +{
++  BOOL didSet = NO;
 +  @try {
-+    return [[AVAudioSession sharedInstance] setActive:active withOptions:options error:error];
++    didSet = [[AVAudioSession sharedInstance] setActive:active withOptions:options error:error];
 +  } @catch (NSException *exception) {
 +    NSLog(@"[ExpoAudio] setActive threw %@: %@", exception.name, exception.reason);
-+    if (error != nil && *error == nil) {
-+      *error = [NSError errorWithDomain:@"ExpoAudio"
-+                                   code:-1
-+                               userInfo:@{
-+                                 NSLocalizedDescriptionKey : exception.reason ?: exception.name ?: @"setActive threw",
-+                               }];
-+    }
-+    return NO;
++    didSet = NO;
++    ExpoAudioFillError(error, exception.reason ?: exception.name ?: @"setActive threw");
 +  }
++
++  if (!didSet) {
++    ExpoAudioFillError(error, @"setActive failed");
++  }
++  return didSet;
 +}
 +
 +@end
