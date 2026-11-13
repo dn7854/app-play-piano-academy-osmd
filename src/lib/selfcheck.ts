@@ -4,6 +4,7 @@ import { matchAnyExpected, waitingNotes } from "./notes";
 import { clampTempo, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
 import { sessionAttempts } from "../audio/sessionProfile";
+import { parseStudioView, showsKeyboard, showsScore } from "./studioView";
 import { isPreviewLocked, PREVIEW_SECONDS } from "./preview-limit";
 
 function assert(condition: unknown, message: string) {
@@ -92,5 +93,11 @@ assert(phoneRecord.every((profile) => profile.iosCategory === "playAndRecord"), 
 assert(!phoneRecord.some((profile) => profile.iosMode === "measurement" && profile.iosOptions.includes("defaultToSpeaker")), "no measurement plus speaker");
 assert(playback[0].iosCategory === "playback" && playback[0].iosOptions.join() === "mixWithOthers", "playback mixes");
 assert(!playback.some((profile) => profile.iosOptions.includes("allowBluetoothA2DP") || profile.allowsRecording), "playback stays playback");
+
+assert(parseStudioView(null) === "score", "view defaults to keys");
+assert(parseStudioView("nope") === "score", "unknown view falls back");
+assert(showsScore("view") && !showsKeyboard("view"), "score-only hides the keyboard");
+assert(showsScore("score") && showsKeyboard("score"), "keys mode keeps the score");
+assert(!showsScore("waterfall") && showsKeyboard("waterfall"), "waterfall replaces the score");
 
 console.log("selfcheck ok");

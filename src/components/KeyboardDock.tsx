@@ -46,6 +46,8 @@ export function KeyboardDock({
   wrong,
   tablet,
   landscape,
+  waterfall,
+  waitMode,
   onKey,
 }: {
   notes: TimedNote[];
@@ -56,13 +58,17 @@ export function KeyboardDock({
   wrong: number[];
   tablet: boolean;
   landscape: boolean;
+  waterfall: boolean;
+  waitMode: boolean;
   onKey: (midi: number) => void;
 }) {
   const metrics = keyboardMetrics(tablet, landscape);
   const layout = useMemo(() => layoutKeys(metrics.white, metrics.black), [metrics.white, metrics.black]);
   const scroller = useRef<ScrollView>(null);
   const [viewport, setViewport] = useState(0);
-  const windowSec = 2.8;
+  const [lane, setLane] = useState(0);
+  const pixelsPerSecond = Math.max(lane * 0.85, 220);
+  const lookAhead = lane > 0 ? lane / pixelsPerSecond : 1.2;
   const focus = waiting[0] ?? active[0];
 
   useEffect(() => {
@@ -71,7 +77,9 @@ export function KeyboardDock({
     scroller.current?.scrollTo({ x: Math.max(0, x - viewport / 2), animated: true });
   }, [focus, layout, metrics.black, metrics.white, viewport]);
 
-  const falling = notes.filter((note) => note.time < scoreTime + windowSec && note.time + note.duration > scoreTime - 0.05);
+  const falling = waterfall
+    ? notes.filter((note) => note.time < scoreTime + lookAhead && note.time + note.duration > scoreTime - 0.05)
+    : [];
 
   function keyStyle(midi: number, black: boolean) {
     const isWait = waiting.includes(midi);
@@ -86,42 +94,49 @@ export function KeyboardDock({
   }
 
   return (
-    <View style={styles.dock}>
+    <View
+      style={[styles.dock, waterfall && styles.dockFill]}
+      onLayout={waterfall ? (event) => setLane(Math.max(0, event.nativeEvent.layout.height - metrics.keyH)) : undefined}
+    >
+      <View style={[styles.saber, waitMode ? styles.hitWait : styles.hitPlay, waterfall ? { bottom: metrics.keyH } : { top: 0 }]} />
       <ScrollView
         ref={scroller}
         horizontal
+        style={waterfall ? styles.fill : undefined}
         showsHorizontalScrollIndicator={false}
         onLayout={(event) => setViewport(event.nativeEvent.layout.width)}
         scrollEventThrottle={16}
       >
-        <View style={{ width: layout.width, height: metrics.fallH + metrics.keyH }}>
-          <View style={[styles.fall, { height: metrics.fallH, width: layout.width }]}>
-            <View style={[styles.hit, waiting.length ? styles.hitWait : styles.hitPlay, { top: metrics.fallH - 4 }]} />
-            {falling.map((note, index) => {
-              const travel = (note.time - scoreTime) / windowSec;
-              const top = metrics.fallH - travel * metrics.fallH - 16;
-              const height = Math.max(16, (note.duration / windowSec) * metrics.fallH);
-              const waitingNote = waiting.includes(note.note);
-              const width = isBlack(note.note) ? metrics.black : metrics.white - 4;
-              return (
-                <View
-                  key={`${note.note}-${note.time}-${index}`}
-                  style={[
-                    styles.beam,
-                    {
-                      left: xOf(layout, note.note, metrics.white, metrics.black) + (isBlack(note.note) ? 0 : 2),
-                      top: Math.min(metrics.fallH - 8, top),
-                      width,
-                      height,
-                      backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(56,189,248,0.92)",
-                      shadowColor: waitingNote ? "#34d399" : "#38bdf8",
-                      borderColor: waitingNote ? "#d1fae5" : "#e0f2fe",
-                    },
-                  ]}
-                />
-              );
-            })}
-          </View>
+        <View style={{ width: layout.width, height: (waterfall ? lane : 0) + metrics.keyH }}>
+          {waterfall && (
+            <View style={[styles.fall, { height: lane, width: layout.width }]}>
+              {falling.map((note, index) => {
+                const yStart = lane - (note.time - scoreTime) * pixelsPerSecond;
+                const height = Math.max(4, note.duration * pixelsPerSecond);
+                const top = yStart - height;
+                const waitingNote = waiting.includes(note.note);
+                const width = isBlack(note.note) ? metrics.black : metrics.white - 4;
+                return (
+                  <View
+                    key={`${note.note}-${note.time}-${index}`}
+                    style={[
+                      styles.beam,
+                      {
+                        left: xOf(layout, note.note, metrics.white, metrics.black) + (isBlack(note.note) ? 0 : 2),
+                        top,
+                        width,
+                        height,
+                        backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(56,189,248,0.92)",
+                        shadowColor: waitingNote ? "#34d399" : "#38bdf8",
+                        borderColor: waitingNote ? "#d1fae5" : "#e0f2fe",
+                      },
+                    ]}
+                  />
+                );
+              })}
+              <View style={[styles.fade, { height: Math.min(72, lane * 0.22) }]} />
+            </View>
+          )}
           <View style={{ height: metrics.keyH }}>
             {layout.whites.map((key) => {
               const lit = keyStyle(key.midi, false);
@@ -166,14 +181,18 @@ export function KeyboardDock({
 
 const styles = StyleSheet.create({
   dock: { backgroundColor: "#070b12", borderTopWidth: 1, borderTopColor: "#164e63" },
-  fall: { position: "relative", overflow: "hidden" },
-  hit: {
+  dockFill: { flex: 1, backgroundColor: "#05080f" },
+  fill: { flex: 1 },
+  fall: { position: "relative", overflow: "hidden", backgroundColor: "#05080f" },
+  fade: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.72)" },
+  saber: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 4,
+    height: 3,
+    zIndex: 5,
     shadowOpacity: 1,
-    shadowRadius: 18,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
   },
   hitPlay: { backgroundColor: "#7dd3fc", shadowColor: "#38bdf8" },
