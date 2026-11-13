@@ -1,3 +1,4 @@
+import { ApiError, flowEndpointMissing, normalizeFlow } from "../api/client";
 import { parseMidi } from "./midi";
 import { notesFromEmbed, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
 import { matchAnyExpected, waitingNotes } from "./notes";
@@ -99,5 +100,87 @@ assert(parseStudioView("nope") === "score", "unknown view falls back");
 assert(showsScore("view") && !showsKeyboard("view"), "score-only hides the keyboard");
 assert(showsScore("score") && showsKeyboard("score"), "keys mode keeps the score");
 assert(!showsScore("waterfall") && showsKeyboard("waterfall"), "waterfall replaces the score");
+
+const flow = normalizeFlow({
+  sections: [
+    {
+      id: "level-2",
+      title: "Level 2",
+      description: "Next",
+      position: 1,
+      tiles: [
+        {
+          id: "placement-b",
+          position: 0,
+          piece: {
+            id: "piece-b",
+            slug: "minuet",
+            title: "Minuet in G",
+            composer: "Christian Petzold",
+            difficulty: "Beginner",
+            tempo: 108,
+            timeSignature: "3/4",
+            imageUrl: null,
+            isPremium: false,
+            hasPdf: false,
+          },
+        },
+      ],
+    },
+    {
+      id: "level-1",
+      title: "Level 1",
+      description: "First scores on the path.",
+      position: 0,
+      tiles: [
+        {
+          id: "placement-late",
+          position: 1,
+          piece: {
+            id: "piece-a",
+            slug: "fur-elise",
+            title: "Für Elise",
+            composer: "Ludwig van Beethoven",
+            difficulty: "nope",
+            tempo: "120",
+            timeSignature: "3/8",
+            imageUrl: "/covers/elise.jpg",
+            isPremium: true,
+            hasPdf: true,
+          },
+        },
+        { id: "placement-bad", position: 2, piece: { title: "Missing id" } },
+        {
+          id: "placement-early",
+          position: 0,
+          piece: {
+            id: "piece-c",
+            slug: "ode",
+            title: "Ode to Joy",
+            composer: null,
+            difficulty: null,
+            imageUrl: "https://cdn.example/ode.jpg",
+            isPremium: "true",
+          },
+        },
+      ],
+    },
+    { id: "empty-level", title: "Empty", position: 2, tiles: [] },
+  ],
+});
+assert(flow.map((section) => section.id).join() === "level-1,level-2", "flow section order");
+assert(flow[0].tiles.map((tile) => tile.id).join() === "placement-early,placement-late", "flow tile order");
+assert(flow[0].tiles[0].id !== flow[0].tiles[0].piece.id, "tile id is the placement");
+assert(flow[0].tiles[0].piece.imageUrl === "https://cdn.example/ode.jpg", "absolute cover kept");
+assert(flow[0].tiles[1].piece.imageUrl === null, "relative cover dropped");
+assert(flow[0].tiles[1].piece.difficulty === null, "unknown difficulty");
+assert(flow[0].tiles[1].piece.isPremium === true, "premium flag");
+assert(flow[0].tiles[1].piece.tempo === 120, "tempo number");
+assert(normalizeFlow({ sections: [] }).length === 0, "empty flow");
+assert(normalizeFlow(null).length === 0, "missing flow");
+assert(flowEndpointMissing(new ApiError("missing", 404, "http")), "404 hides flow");
+assert(flowEndpointMissing(new ApiError("signin", 302, "unavailable")), "signin hides flow");
+assert(!flowEndpointMissing(new ApiError("down", 500, "http")), "500 keeps flow");
+assert(!flowEndpointMissing(new ApiError("offline", null, "network")), "network is not a missing route");
 
 console.log("selfcheck ok");

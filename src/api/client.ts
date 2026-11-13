@@ -3,6 +3,8 @@ import type {
   CollectionDetail,
   CollectionSummary,
   Difficulty,
+  FlowSection,
+  FlowTile,
   Mp3File,
   PieceCollection,
   PieceDetail,
@@ -193,6 +195,59 @@ export async function fetchCollection(idOrSlug: string): Promise<CollectionDetai
     .map(normalizeSummary)
     .filter((item): item is PieceSummary => item != null);
   return { ...collection, pieces, pieceCount: collection.pieceCount || pieces.length };
+}
+
+function normalizeFlowTile(raw: unknown, index: number): FlowTile | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = str(row.id);
+  const piece = normalizeSummary(row.piece);
+  if (!id || !piece) return null;
+  return { id, position: num(row.position) ?? index, piece };
+}
+
+function normalizeFlowSection(raw: unknown, index: number): FlowSection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = str(row.id);
+  const title = str(row.title);
+  if (!id || !title) return null;
+  const tiles = (Array.isArray(row.tiles) ? row.tiles : [])
+    .map(normalizeFlowTile)
+    .filter((item): item is FlowTile => item != null)
+    .sort((a, b) => a.position - b.position);
+  if (!tiles.length) return null;
+  return {
+    id,
+    title,
+    description: str(row.description),
+    position: num(row.position) ?? index,
+    tiles,
+  };
+}
+
+/** Accepts the flow payload, or anything else, and returns sections in display order. */
+export function normalizeFlow(data: unknown): FlowSection[] {
+  const row = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const list = Array.isArray(row.sections) ? row.sections : [];
+  return list
+    .map(normalizeFlowSection)
+    .filter((item): item is FlowSection => item != null)
+    .sort((a, b) => a.position - b.position);
+}
+
+/**
+ * The route is not deployed yet when the host answers 404 or sends the sign-in page
+ * (the same HTML redirect the other catalog routes use before the API exists).
+ */
+export function flowEndpointMissing(error: unknown) {
+  return error instanceof ApiError && (error.kind === "unavailable" || error.status === 404);
+}
+
+/** Published learning path. Uses the same API origin as the catalog. */
+export async function fetchFlow(): Promise<FlowSection[]> {
+  const data = await fetchJson("/api/mobile/academy-studio/flow");
+  return normalizeFlow(data);
 }
 
 export async function fetchPieces(): Promise<PieceSummary[]> {

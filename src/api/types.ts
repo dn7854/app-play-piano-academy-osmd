@@ -64,3 +64,19 @@ export type PieceDetail = PieceSummary & {
 export type CollectionDetail = CollectionSummary & {
   pieces: PieceSummary[];
 };
+
+/** One score placed on the learning path. `id` is the placement, not the piece. */
+export type FlowTile = {
+  id: string;
+  position: number;
+  piece: PieceSummary;
+};
+
+/** A published section of the learning path. Tiles are already in display order. */
+export type FlowSection = {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  tiles: FlowTile[];
+};
