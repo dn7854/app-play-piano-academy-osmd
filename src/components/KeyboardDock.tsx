@@ -4,6 +4,7 @@ import { openingAnchor, type TimedNote } from "../lib/notes";
 import { fonts } from "../theme";
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const SABER = 12;
 const BLACK = new Set([1, 3, 6, 8, 10]);
 
 function isBlack(midi: number) {
@@ -114,12 +115,14 @@ export function KeyboardDock({
 
   return (
     <View
-      style={[styles.dock, waterfall && styles.dockFill]}
+      style={[styles.dock, waterfall && styles.dockFill, !waterfall && { paddingTop: SABER }]}
       onLayout={waterfall ? (event) => setLane(Math.max(0, event.nativeEvent.layout.height - metrics.keyH)) : undefined}
     >
-      <View pointerEvents="none" style={[styles.saberWrap, waterfall ? { bottom: metrics.keyH - 14 } : { top: 0 }]}>
+      <View
+        pointerEvents="none"
+        style={[styles.saberLane, waterfall ? { bottom: metrics.keyH } : { top: 0 }]}
+      >
         <View style={[styles.saberGlow, waitMode ? styles.glowWait : styles.glowPlay]} />
-        <View style={[styles.saberMid, waitMode ? styles.midWait : styles.midPlay]} />
         <View style={[styles.saberCore, waitMode ? styles.coreWait : styles.corePlay]} />
       </View>
       <ScrollView
@@ -208,33 +211,30 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   fall: { position: "relative", overflow: "hidden", backgroundColor: "#05080f" },
   fade: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.72)" },
-  saberWrap: {
+  saberLane: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 28,
+    height: SABER,
     zIndex: 4,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-  saberGlow: { position: "absolute", left: 0, right: 0, height: 22, opacity: 0.38 },
-  saberMid: { position: "absolute", left: 0, right: 0, height: 12, opacity: 0.72 },
+  saberGlow: { position: "absolute", left: 0, right: 0, height: 8, opacity: 0.55 },
   saberCore: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 8,
-    elevation: 0,
-    shadowOpacity: 1,
-    shadowRadius: 18,
+    height: 3,
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },
   },
   glowPlay: { backgroundColor: "#38bdf8" },
-  midPlay: { backgroundColor: "#7dd3fc" },
-  corePlay: { backgroundColor: "#f0f9ff", shadowColor: "#38bdf8" },
+  corePlay: { backgroundColor: "#38bdf8", shadowColor: "#38bdf8" },
   glowWait: { backgroundColor: "#34d399" },
-  midWait: { backgroundColor: "#6ee7b7" },
-  coreWait: { backgroundColor: "#ecfdf5", shadowColor: "#34d399" },
+  coreWait: { backgroundColor: "#34d399", shadowColor: "#34d399" },
   beam: {
     position: "absolute",
     borderRadius: 6,

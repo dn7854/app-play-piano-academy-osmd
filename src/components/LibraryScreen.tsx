@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { recallJson, rememberJson } from "../api/cache";
 import {
@@ -20,9 +20,38 @@ function openPiece(piece: PieceSummary, collection?: string) {
   router.push({ pathname: "/piece/[id]", params: { id: piece.slug || piece.id, collection: collection ?? "" } });
 }
 
-function Card({ title, subtitle, meta, premium, onPress }: { title: string; subtitle: string; meta?: string; premium?: boolean; onPress: () => void }) {
+function CoverThumb({ uri }: { uri: string | null }) {
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const show = Boolean(uri) && failedUri !== uri;
+  return (
+    <View style={styles.thumb}>
+      {show && uri ? (
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailedUri(uri)} />
+      ) : (
+        <Text style={styles.thumbMark}>♪</Text>
+      )}
+    </View>
+  );
+}
+
+function Card({
+  title,
+  subtitle,
+  meta,
+  premium,
+  imageUrl,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  meta?: string;
+  premium?: boolean;
+  imageUrl: string | null;
+  onPress: () => void;
+}) {
   return (
     <Pressable onPress={onPress} style={styles.card}>
+      <CoverThumb uri={imageUrl} />
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{title}</Text>
         <Text style={styles.cardSub}>{subtitle}</Text>
@@ -230,6 +259,7 @@ export function LibraryScreen({ slug }: { slug?: string }) {
                 title={collection.title}
                 subtitle={collection.description || "Collection"}
                 meta={collection.pieceCount ? `${collection.pieceCount} pieces` : undefined}
+                imageUrl={collection.imageUrl}
                 onPress={() => router.push({ pathname: "/collection/[slug]", params: { slug: collection.slug } })}
               />
             ))}
@@ -241,6 +271,7 @@ export function LibraryScreen({ slug }: { slug?: string }) {
                 subtitle={piece.composer || "Piano"}
                 meta={piece.difficulty || undefined}
                 premium={piece.isPremium}
+                imageUrl={piece.imageUrl}
                 onPress={() => openPiece(piece, slug)}
               />
             ))}
@@ -279,8 +310,18 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: dark.cardEdge,
-    padding: 16,
+    padding: 12,
   },
+  thumb: {
+    width: 56,
+    height: 72,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: dark.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbMark: { fontFamily: fonts.bold, color: dark.muted, fontSize: 18 },
   cardTitle: { fontFamily: fonts.bold, color: dark.fg, fontSize: 17 },
   cardSub: { fontFamily: fonts.regular, color: dark.muted, marginTop: 3 },
   meta: { fontFamily: fonts.medium, color: dark.sky, fontSize: 12 },

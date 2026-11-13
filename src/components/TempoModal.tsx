@@ -1,7 +1,7 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Slider from "@react-native-community/slider";
 import { tempoBounds } from "../lib/tempo";
-import { fonts, light } from "../theme";
+import { fonts, light, TABLET_MIN } from "../theme";
 
 export function TempoModal({
   visible,
@@ -18,10 +18,12 @@ export function TempoModal({
 }) {
   const { min, max } = tempoBounds(pieceBpm);
   const percent = Math.round((bpm / Math.max(1, max)) * 100);
+  const { width, height } = useWindowDimensions();
+  const tablet = Math.min(width, height) >= TABLET_MIN;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => undefined}>
+        <Pressable style={[styles.card, tablet && styles.cardTablet]} onPress={() => undefined}>
           <Text style={styles.kicker}>TEMPO</Text>
           <Text style={styles.bpm}>{bpm} BPM</Text>
           <Text style={styles.hint}>
@@ -47,8 +49,9 @@ export function TempoModal({
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: "rgba(15,23,42,0.4)", justifyContent: "center", padding: 24 },
-  card: { borderRadius: 24, backgroundColor: light.white, padding: 20, gap: 8 },
+  scrim: { flex: 1, backgroundColor: "rgba(15,23,42,0.4)", justifyContent: "center", alignItems: "center", padding: 24 },
+  card: { width: "100%", borderRadius: 24, backgroundColor: light.white, padding: 20, gap: 8 },
+  cardTablet: { maxWidth: 440 },
   kicker: { fontFamily: fonts.bold, letterSpacing: 1.4, color: light.sky, fontSize: 12 },
   bpm: { fontFamily: fonts.bold, fontSize: 36, color: light.ink },
   hint: { fontFamily: fonts.regular, color: light.muted, lineHeight: 20 },

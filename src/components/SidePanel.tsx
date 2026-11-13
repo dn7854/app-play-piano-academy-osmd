@@ -7,7 +7,7 @@ import { readDiagnostics } from "../lib/diagnostics";
 import type { PitchReading } from "../pitch/usePitch";
 import { STUDIO_VIEWS, type StudioView } from "../lib/studioView";
 
-import { fonts, light } from "../theme";
+import { fonts, light, studioNav } from "../theme";
 
 function DiagnosticsRow() {
   const insets = useSafeAreaInsets();
@@ -153,12 +153,12 @@ export function SidePanel({
   onPiece: (piece: PieceSummary) => void;
   onClose?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.panel}>
-      <View style={styles.head}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>D8R PIANO ACADEMY</Text>
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
+      <View style={[styles.head, { paddingTop: insets.top }]}>
+        <View style={styles.headText}>
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
           <Text style={styles.composer} numberOfLines={1}>{composer || "Piano"}</Text>
         </View>
         {onClose ? (
@@ -181,7 +181,7 @@ export function SidePanel({
             })}
           </View>
         </View>
-        <Toggle title="Play mode" detail="The app plays the written piano part." on={playMode} tone="sky" onPress={onPlayMode} />
+        <Toggle title="Play mode" detail="The backing track plays. Sample piano notes stay off." on={playMode} tone="sky" onPress={onPlayMode} />
         <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
         <View style={styles.sliderBlock}>
           <View style={styles.sliderHead}>
@@ -278,12 +278,28 @@ export function SidePanel({
 
 const styles = StyleSheet.create({
   panel: { flex: 1, backgroundColor: light.bg },
-  head: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#e7e0d2", flexDirection: "row", gap: 8 },
-  kicker: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1.6, color: light.sky },
-  title: { fontFamily: fonts.bold, fontSize: 18, color: light.ink, marginTop: 4 },
-  composer: { fontFamily: fonts.medium, fontSize: 11, letterSpacing: 0.6, color: light.muted, textTransform: "uppercase", marginTop: 2 },
-  close: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  closeText: { fontFamily: fonts.bold, color: light.muted },
+  head: {
+    paddingHorizontal: studioNav.padH,
+    paddingBottom: studioNav.padB,
+    backgroundColor: studioNav.bg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headText: { flex: 1, justifyContent: "center" },
+  title: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, color: studioNav.title },
+  composer: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, color: studioNav.muted },
+  close: {
+    width: studioNav.icon,
+    height: studioNav.icon,
+    borderRadius: studioNav.icon / 2,
+    borderWidth: 1,
+    borderColor: studioNav.buttonEdge,
+    backgroundColor: studioNav.button,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeText: { fontFamily: fonts.bold, color: studioNav.title, fontSize: 16, marginTop: -1 },
   body: { padding: 16, gap: 10, paddingBottom: 32 },
   toggle: { borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", borderRadius: 16, padding: 12, flexDirection: "row", alignItems: "center", gap: 8 },
   toggleTitle: { fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase", color: light.ink },

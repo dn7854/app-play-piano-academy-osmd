@@ -29,3 +29,15 @@ export const fonts = {
 };
 
 export const TABLET_MIN = 600;
+
+/** Piece-screen bar. The studio sheet's close button uses the same box. */
+export const studioNav = {
+  icon: 36,
+  padH: 12,
+  padB: 8,
+  bg: "#0f172a",
+  title: "#f8fafc",
+  muted: "#cbd5e1",
+  button: "#1e293b",
+  buttonEdge: "#334155",
+};
