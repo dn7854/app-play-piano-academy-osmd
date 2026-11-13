@@ -39,7 +39,7 @@ In a dev build with empty RevenueCat keys, the paywall's unlock button marks the
 
 ## What you can do
 
-- The library is dark. Collections and the full piece list come from the mobile API.
+- The library is dark. When the flow route is available, home opens on Flow: published sections, each with score tiles. Library (collections and the full piece list) stays on the same screen. Until that route is deployed, Flow stays hidden and home is the library.
 - A score opens in the bright academy-studio theme. Portrait shows a full A4 page. Landscape on a phone zooms to the staff being played. Landscape on iPad zooms out enough to show several staves. Pinch zoom works only while playback is stopped.
 - The seek bar stays on the score. Play and pause sit with it.
 - The side panel has play mode, wait to play, the tempo sheet (55% to 100% of the written BPM), backing track, microphone, mic sensitivity, MIDI keyboard, PDF download, and the other pieces in the collection.
@@ -51,11 +51,14 @@ In a dev build with empty RevenueCat keys, the paywall's unlock button marks the
 
 The app calls these routes on `EXPO_PUBLIC_API_BASE_URL`. The contract is `docs/mobile-academy-studio-api.md` on `cursor/mobile-academy-studio-api-50cf` (pull request 4 of the website). This client follows that contract. Normalization lives in `src/api/client.ts` if a field name still needs a tweak.
 
+- `GET /api/mobile/academy-studio/flow`
 - `GET /api/mobile/academy-studio/collections`
 - `GET /api/mobile/academy-studio/collections/{id-or-slug}`
 - `GET /api/mobile/academy-studio/pieces`
 - `GET /api/mobile/academy-studio/pieces/{id-or-slug}`
 - `GET /api/mobile/academy-studio/pieces/{id}/pdf`
+
+Flow returns `{ "sections": [...] }` in display order. A tile opens the score with `piece.slug` or `piece.id`. `tiles[].id` is the placement id. A premium tile shows a Pro mark until the user owns `d8r_piano_academy_pro`, and still opens. Playback limits are unchanged. `{ "sections": [] }` is the empty path. A 404 or the sign-in page (the route is not deployed) hides Flow. The response is cached on device the same way as the catalog.
 
 The PDF route is sent with `X-RevenueCat-App-User-Id` set to `Purchases.getAppUserID()`. Premium PDFs are rejected without a user who owns the `d8r_piano_academy_pro` entitlement. A JSON body `{ "url": "..." }` is followed; a PDF body is saved as-is.
 
