@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AudioManager, AudioRecorder } from "react-native-audio-api";
+import { deviceSampleRate, releaseAudioSession, setAudioSession } from "../audio/session";
 import { analyzePitch, gateForSensitivity, stablePitch } from "../lib/pitch";
 
 export type PitchStatus = "idle" | "requesting" | "denied" | "missing" | "listening";
@@ -14,13 +15,17 @@ export type PitchReading = {
 
 const empty: PitchReading = { status: "idle", message: null, rms: 0, hz: null, liveHz: null };
 const WINDOW = 4096;
-const REQUESTED_RATE = 44100;
 
 let recorder: AudioRecorder | null = null;
 
 function getRecorder() {
-  if (!recorder) recorder = new AudioRecorder();
-  return recorder;
+  if (recorder) return recorder;
+  try {
+    recorder = new AudioRecorder();
+    return recorder;
+  } catch {
+    return null;
+  }
 }
 
 function granted(status: unknown) {
@@ -28,12 +33,6 @@ function granted(status: unknown) {
 }
 
 async function openMic(): Promise<"ok" | "denied"> {
-  AudioManager.setAudioSessionOptions({
-    iosCategory: "playAndRecord",
-    iosMode: "measurement",
-    iosOptions: ["defaultToSpeaker", "allowBluetoothA2DP"],
-  });
-  await AudioManager.setAudioSessionActivity(true);
   let status: unknown = await AudioManager.requestRecordingPermissions();
   const check = (AudioManager as { checkRecordingPermissions?: () => Promise<unknown> }).checkRecordingPermissions;
   if (!granted(status) && check) status = await check();
@@ -71,40 +70,61 @@ export function usePitch(enabled: boolean, sensitivity: number): PitchReading {
     let streak = 0;
     const rec = getRecorder();
     const gate = gateForSensitivity(sensitivity);
+    const sessionReady = setAudioSession("record");
 
     setReading({ status: "requesting", message: null, rms: 0, hz: null, liveHz: null });
 
-    rec.onAudioReady({ sampleRate: REQUESTED_RATE, bufferLength: WINDOW, channelCount: 1 }, ({ buffer }) => {
-      if (cancelled) return;
-      const channel = buffer.getChannelData(0);
-      const next = takeFrame(stash, channel);
-      stash = next.stash;
-      if (!next.frame) return;
-      const rate = (buffer as { sampleRate?: number }).sampleRate ?? REQUESTED_RATE;
-      const frame = analyzePitch(next.frame, rate, gate);
-      if (frame.tonal && frame.frequency) {
-        history.push(frame.frequency);
-        if (history.length > 6) history.shift();
-        misses = 0;
-        streak += 1;
-      } else {
-        misses += 1;
-        streak = 0;
-        if (misses > 2) history.length = 0;
-      }
-      const hz = stablePitch(history, framesNeeded);
-      const liveHz = frame.tonal && frame.frequency && (streak >= 2 || hz != null) ? frame.frequency : hz;
+    if (!rec) {
       setReading({
-        status: "listening",
-        message: null,
-        rms: Math.min(1, frame.rms * 4),
-        hz,
-        liveHz,
+        status: "missing",
+        message: "The microphone could not start.",
+        rms: 0,
+        hz: null,
+        liveHz: null,
       });
-    });
+      return () => {
+        cancelled = true;
+        void releaseAudioSession("record");
+      };
+    }
 
     void (async () => {
       try {
+        await sessionReady;
+        if (cancelled) return;
+        const listenRate = deviceSampleRate() ?? 48000;
+        rec.onAudioReady({ sampleRate: listenRate, bufferLength: WINDOW, channelCount: 1 }, ({ buffer }) => {
+          if (cancelled) return;
+          try {
+            const channel = buffer.getChannelData(0);
+            const next = takeFrame(stash, channel);
+            stash = next.stash;
+            if (!next.frame) return;
+            const rate = (buffer as { sampleRate?: number }).sampleRate || listenRate;
+            const frame = analyzePitch(next.frame, rate, gate);
+            if (frame.tonal && frame.frequency) {
+              history.push(frame.frequency);
+              if (history.length > 6) history.shift();
+              misses = 0;
+              streak += 1;
+            } else {
+              misses += 1;
+              streak = 0;
+              if (misses > 2) history.length = 0;
+            }
+            const hz = stablePitch(history, framesNeeded);
+            const liveHz = frame.tonal && frame.frequency && (streak >= 2 || hz != null) ? frame.frequency : hz;
+            setReading({
+              status: "listening",
+              message: null,
+              rms: Math.min(1, frame.rms * 4),
+              hz,
+              liveHz,
+            });
+          } catch {
+            // One bad frame should not stop listening.
+          }
+        });
         const permission = await openMic();
         if (cancelled) return;
         if (permission !== "ok") {
@@ -138,12 +158,17 @@ export function usePitch(enabled: boolean, sensitivity: number): PitchReading {
 
     return () => {
       cancelled = true;
+      void releaseAudioSession("record");
       try {
         rec.clearOnAudioReady();
       } catch {
         // ignore
       }
-      if (rec.isRecording()) void rec.stop();
+      try {
+        if (rec.isRecording()) void rec.stop();
+      } catch {
+        // already stopped
+      }
     };
   }, [enabled, framesNeeded, sensitivity]);
 

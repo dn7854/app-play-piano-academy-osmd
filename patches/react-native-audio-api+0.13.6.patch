@@ -1,0 +1,165 @@
+diff --git a/node_modules/react-native-audio-api/ios/audioapi/ios/AudioAPIModule.mm b/node_modules/react-native-audio-api/ios/audioapi/ios/AudioAPIModule.mm
+index 818d17d..281da05 100644
+--- a/node_modules/react-native-audio-api/ios/audioapi/ios/AudioAPIModule.mm
++++ b/node_modules/react-native-audio-api/ios/audioapi/ios/AudioAPIModule.mm
+@@ -157,6 +157,7 @@ RCT_EXPORT_METHOD(
+         RCTPromiseRejectBlock)reject)
+ {
+   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
++   @try {
+     // Deactivating the session underneath a live recording would corrupt its output, so
+     // the recording is finalized first
+     if (!enabled) {
+@@ -194,6 +195,13 @@ RCT_EXPORT_METHOD(
+     }
+ 
+     resolve(nil);
++   } @catch (NSException *exception) {
++     NSLog(@"[AudioAPIModule] setAudioSessionActivity threw %@: %@", exception.name, exception.reason);
++     reject(
++         @"E_AUDIO_SESSION",
++         exception.reason ?: @"Audio session activation threw",
++         nil);
++   }
+   });
+ }
+ 
+@@ -202,15 +210,19 @@ RCT_EXPORT_METHOD(
+         NSArray *)options allowHaptics : (BOOL)allowHaptics notifyOthersOnDeactivation : (BOOL)
+         notifyOthersOnDeactivation)
+ {
+-  if (!self.audioSessionManager.shouldManageSession) {
+-    [self.audioSessionManager setShouldManageSession:true];
+-  }
++  @try {
++    if (!self.audioSessionManager.shouldManageSession) {
++      [self.audioSessionManager setShouldManageSession:true];
++    }
+ 
+-  [self.audioSessionManager setAudioSessionOptions:category
+-                                              mode:mode
+-                                           options:options
+-                                      allowHaptics:allowHaptics
+-                        notifyOthersOnDeactivation:notifyOthersOnDeactivation];
++    [self.audioSessionManager setAudioSessionOptions:category
++                                                mode:mode
++                                             options:options
++                                        allowHaptics:allowHaptics
++                          notifyOthersOnDeactivation:notifyOthersOnDeactivation];
++  } @catch (NSException *exception) {
++    NSLog(@"[AudioAPIModule] setAudioSessionOptions threw %@: %@", exception.name, exception.reason);
++  }
+ }
+ 
+ RCT_EXPORT_METHOD(observeAudioInterruptions : (NSString *)focusType enabled : (BOOL)enabled)
+diff --git a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioSessionManager.mm b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioSessionManager.mm
+index d115837..943c12f 100644
+--- a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioSessionManager.mm
++++ b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioSessionManager.mm
+@@ -10,6 +10,11 @@
+ - (NSInteger)currentRecordPermissionStatus;
+ - (NSString *)recordPermissionStatusString:(NSInteger)status;
+ - (NSString *)formatPorts:(NSArray<AVAudioSessionPortDescription *> *)ports;
++- (void)applyAudioSessionOptions:(NSString *)categoryStr
++                            mode:(NSString *)modeStr
++                         options:(NSArray *)optionsArray
++                    allowHaptics:(BOOL)allowHaptics
++      notifyOthersOnDeactivation:(BOOL)notifyOthersOnDeactivation;
+ 
+ @end
+ 
+@@ -69,11 +74,36 @@ static AudioSessionManager *_sharedInstance = nil;
+     return true;
+   }
+ 
++  if (self.desiredCategory == nil || self.desiredMode == nil || self.audioSession == nil) {
++    NSLog(@"[AudioSessionManager] Refusing invalid category or mode");
++    return false;
++  }
++
+   NSError *categoryError = nil;
+-  [self.audioSession setCategory:self.desiredCategory
+-                            mode:self.desiredMode
+-                         options:self.desiredOptions
+-                           error:&categoryError];
++  BOOL didSetCategory = NO;
++  @try {
++    didSetCategory = [self.audioSession setCategory:self.desiredCategory
++                                               mode:self.desiredMode
++                                            options:self.desiredOptions
++                                              error:&categoryError];
++  } @catch (NSException *exception) {
++    // setCategory:mode:options:error: raises for illegal category/mode/option
++    // combinations. A void TurboModule cannot turn that into a JS exception.
++    NSLog(@"[AudioSessionManager] setCategory threw %@: %@", exception.name, exception.reason);
++    if (outError != nil && categoryError == nil) {
++      *outError = [NSError errorWithDomain:@"AudioSessionManager"
++                                      code:-1
++                                  userInfo:@{
++                                    NSLocalizedDescriptionKey : exception.reason ?: exception.name ?: @"setCategory threw",
++                                  }];
++    }
++    return false;
++  }
++
++  if (!didSetCategory && categoryError == nil) {
++    NSLog(@"[AudioSessionManager] setCategory returned NO without an error");
++    return false;
++  }
+ 
+   if (categoryError != nil) {
+     NSLog(@"Error while configuring audio session: %@", [categoryError debugDescription]);
+@@ -115,6 +145,23 @@ static AudioSessionManager *_sharedInstance = nil;
+                        options:(NSArray *)optionsArray
+                   allowHaptics:(BOOL)allowHaptics
+     notifyOthersOnDeactivation:(BOOL)notifyOthersOnDeactivation
++{
++  @try {
++    [self applyAudioSessionOptions:categoryStr
++                              mode:modeStr
++                           options:optionsArray
++                      allowHaptics:allowHaptics
++        notifyOthersOnDeactivation:notifyOthersOnDeactivation];
++  } @catch (NSException *exception) {
++    NSLog(@"[AudioSessionManager] setAudioSessionOptions threw %@: %@", exception.name, exception.reason);
++  }
++}
++
++- (void)applyAudioSessionOptions:(NSString *)categoryStr
++                            mode:(NSString *)modeStr
++                         options:(NSArray *)optionsArray
++                    allowHaptics:(BOOL)allowHaptics
++      notifyOthersOnDeactivation:(BOOL)notifyOthersOnDeactivation
+ {
+   AVAudioSessionCategory category = [self categoryFromString:categoryStr];
+   AVAudioSessionMode mode = [self modeFromString:modeStr];
+@@ -160,7 +207,13 @@ static AudioSessionManager *_sharedInstance = nil;
+       ? 0
+       : (self.notifyOthersOnDeactivation ? AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+                                          : 0);
+-  bool success = [self.audioSession setActive:active withOptions:options error:error];
++  bool success = false;
++  @try {
++    success = [self.audioSession setActive:active withOptions:options error:error];
++  } @catch (NSException *exception) {
++    NSLog(@"[AudioSessionManager] setActive threw %@: %@", exception.name, exception.reason);
++    success = false;
++  }
+ 
+   if (success) {
+     self.isActive = active;
+@@ -188,7 +241,13 @@ static AudioSessionManager *_sharedInstance = nil;
+     return false;
+   }
+ 
+-  bool success = [self.audioSession setActive:true withOptions:0 error:error];
++  bool success = false;
++  @try {
++    success = [self.audioSession setActive:true withOptions:0 error:error];
++  } @catch (NSException *exception) {
++    NSLog(@"[AudioSessionManager] setActive threw %@: %@", exception.name, exception.reason);
++    success = false;
++  }
+ 
+   if (success) {
+     self.isActive = true;

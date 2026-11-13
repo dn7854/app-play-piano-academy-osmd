@@ -18,7 +18,7 @@ async function initPiano(): Promise<void> {
     const { source } = getSampleDetails(m);
     if (source && !players.has(m)) {
       try {
-        players.set(m, createAudioPlayer(source));
+        players.set(m, createAudioPlayer(source, { keepAudioSessionActive: true }));
         await new Promise((r) => setTimeout(r, 15));
       } catch (_) {}
     }
@@ -31,7 +31,7 @@ async function ensure(midi: number): Promise<void> {
   const { source } = getSampleDetails(midi);
   if (!source) return;
   try {
-    players.set(midi, createAudioPlayer(source));
+    players.set(midi, createAudioPlayer(source, { keepAudioSessionActive: true }));
     await new Promise((r) => setTimeout(r, 10));
   } catch (_) {}
 }

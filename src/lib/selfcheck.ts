@@ -3,6 +3,7 @@ import { notesFromEmbed, parseEmbedCommand, parseEmbedEvent, protocolCompatible,
 import { matchAnyExpected, waitingNotes } from "./notes";
 import { clampTempo, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
+import { sessionAttempts } from "../audio/sessionProfile";
 import { isPreviewLocked, PREVIEW_SECONDS } from "./preview-limit";
 
 function assert(condition: unknown, message: string) {
@@ -80,5 +81,16 @@ assert(!isPreviewLocked(true, 19.9), "still inside the preview");
 const ipad = gateForSensitivity(0.78);
 const phone = gateForSensitivity(0.22);
 assert(ipad.rmsMin < phone.rmsMin, "ipad hears quieter notes");
+
+const padRecord = sessionAttempts("record", true);
+const phoneRecord = sessionAttempts("record", false);
+const playback = sessionAttempts("playback", true);
+assert(padRecord[0].iosMode === "measurement", "ipad record prefers measurement");
+assert(!padRecord[0].iosOptions.includes("defaultToSpeaker"), "measurement skips defaultToSpeaker");
+assert(phoneRecord[0].iosMode === "default" && phoneRecord[0].iosOptions.includes("defaultToSpeaker"), "iphone record uses the speaker");
+assert(phoneRecord.every((profile) => profile.iosCategory === "playAndRecord"), "record stays playAndRecord");
+assert(!phoneRecord.some((profile) => profile.iosMode === "measurement" && profile.iosOptions.includes("defaultToSpeaker")), "no measurement plus speaker");
+assert(playback[0].iosCategory === "playback" && playback[0].iosOptions.join() === "mixWithOthers", "playback mixes");
+assert(!playback.some((profile) => profile.iosOptions.includes("allowBluetoothA2DP") || profile.allowsRecording), "playback stays playback");
 
 console.log("selfcheck ok");

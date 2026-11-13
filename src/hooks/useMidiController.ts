@@ -33,7 +33,16 @@ export function useMidiController(onNoteInput: (event: MidiNoteEvent) => void) {
           reqMIDI = NativeMidi.requestMIDIAccess;
         }
 
+        if (typeof reqMIDI !== 'function') {
+          if (isMounted) setDeviceName('MIDI Not Supported');
+          return;
+        }
+
         const midiAccess = await reqMIDI();
+        if (!midiAccess?.inputs || typeof midiAccess.inputs.values !== 'function') {
+          if (isMounted) setDeviceName('Disconnected');
+          return;
+        }
         midiAccessRef = midiAccess;
 
         const setupInputs = () => {
@@ -46,15 +55,19 @@ export function useMidiController(onNoteInput: (event: MidiNoteEvent) => void) {
             }
 
             firstInput.onmidimessage = (message: { data: Uint8Array }) => {
-              if (!message.data || message.data.length < 3) return;
-              const [status, noteNumber, velocity] = message.data;
-              const command = status & 0xf0;
+              try {
+                if (!message?.data || message.data.length < 3) return;
+                const [status, noteNumber, velocity] = message.data;
+                const command = status & 0xf0;
 
-              // 0x90 = Note On, 0x80 = Note Off
-              if (command === 0x90 && velocity > 0) {
-                onNoteInput({ noteNumber, velocity, type: 'note-on' });
-              } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
-                onNoteInput({ noteNumber, velocity, type: 'note-off' });
+                // 0x90 = Note On, 0x80 = Note Off
+                if (command === 0x90 && velocity > 0) {
+                  onNoteInput({ noteNumber, velocity, type: 'note-on' });
+                } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+                  onNoteInput({ noteNumber, velocity, type: 'note-off' });
+                }
+              } catch (err) {
+                console.warn('[MIDI] Note handler failed:', err);
               }
             };
           } else {
