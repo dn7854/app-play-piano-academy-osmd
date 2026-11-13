@@ -21,6 +21,8 @@ import { usePitch } from "../pitch/usePitch";
 import { usePitchSensitivity } from "../pitch/sensitivity";
 import { usePurchases } from "../purchases";
 import { setAudioSession } from "../audio/session";
+import { showsKeyboard, showsScore } from "../lib/studioView";
+import { ACOUSTIC_MIC_KEY, MIDI_TOGGLE_KEY, usePersistedBoolean, usePersistedStudioView } from "../lib/studioPrefs";
 import { config } from "../config";
 import * as FileSystem from "expo-file-system/legacy";
 import { ScoreWebView } from "../score/ScoreWebView";
@@ -78,7 +80,11 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [seeking, setSeeking] = useState(false);
   const [seekValue, setSeekValue] = useState(0);
   const [score, setScore] = useState<LoadedScore | null>(null);
-  const [micOn, setMicOn] = useState(false);
+  const acoustic = usePersistedBoolean(ACOUSTIC_MIC_KEY, false);
+  const midiToggle = usePersistedBoolean(MIDI_TOGGLE_KEY, false);
+  const [viewMode, setViewMode] = usePersistedStudioView();
+  const micOn = acoustic.hydrated && acoustic.value;
+  const midiEnabled = midiToggle.hydrated && midiToggle.value;
   const [sensitivity, setSensitivity] = usePitchSensitivity(tablet);
 
   useEffect(() => {
@@ -160,7 +166,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const onMidi = useCallback((event: { type: string; noteNumber: number }) => {
     if (event.type === "note-on") onNoteRef.current(event.noteNumber, "midi");
   }, []);
-  const midi = useMidiController(onMidi);
+  const midi = useMidiController(midiEnabled, onMidi);
   const micAt = useRef(0);
 
   useEffect(() => {
@@ -228,13 +234,15 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       bpm={shownBpm}
       backingLabels={groups.map((group) => group.label)}
       backingIndex={backingIndex}
+      viewMode={viewMode}
+      onViewMode={setViewMode}
       micOn={micOn}
       sensitivity={sensitivity}
       tablet={tablet}
       pitch={pitch}
-      midiPorts={midi.isConnected ? [{ id: "midi", name: midi.deviceName }] : []}
-      midiError={midi.isConnected ? null : midi.deviceName === "Disconnected" ? null : midi.deviceName}
-      midiReady={midi.isConnected}
+      midiOn={midiEnabled}
+      midiConnected={midi.isConnected}
+      midiName={midi.isConnected ? midi.deviceName : null}
       pdfEnabled={piece.pdf.available}
       pro={pro}
       others={others}
@@ -243,9 +251,9 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       onZoom={setZoom}
       onTempo={() => setTempoOpen(true)}
       onBacking={setBackingIndex}
-      onMic={() => setMicOn((value) => !value)}
+      onMic={() => acoustic.setValue(!acoustic.value)}
       onSensitivity={setSensitivity}
-      onMidi={() => undefined}
+      onMidi={() => midiToggle.setValue(!midiToggle.value)}
       onPdf={() => void onPdf()}
       onPiece={(next) => router.replace({ pathname: "/piece/[id]", params: { id: next.slug || next.id, collection: collection ?? "" } })}
       onClose={dockPanel ? undefined : () => setPanel(false)}
@@ -274,23 +282,32 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       </View>
       <View style={{ flex: 1, flexDirection: dockPanel ? "row" : "column" }}>
         <View style={{ flex: 1 }}>
-          <ScoreWebView
-            pieceId={piece.id}
-            remoteXmlUrl={piece.musicXmlUrl}
-            xmlText={cached?.xmlText ?? null}
-            offline={offline}
-            scoreTime={playback.scoreTime}
-            bpm={pieceBpm}
-            timeSignature={piece.timeSignature}
-            keySignature={piece.keySignature}
-            measuresPerSystem={piece.measuresPerSystem}
-            playing={playback.playing}
-            waitMode={waitMode}
-            layout={(landscape ? (tablet ? "landscape-tablet" : "landscape-phone") : "portrait") satisfies EmbedLayoutName}
-            zoom={zoom}
-            onLoaded={setScore}
-            onNoteTapped={(tap) => playback.seek(tap.time, playback.playing)}
-          />
+          <View
+            pointerEvents={showsScore(viewMode) ? "auto" : "none"}
+            style={
+              showsScore(viewMode)
+                ? styles.score
+                : { position: "absolute", opacity: 0, left: -(width + 80), width: Math.max(width, 320), height: Math.max(height, 480) }
+            }
+          >
+            <ScoreWebView
+              pieceId={piece.id}
+              remoteXmlUrl={piece.musicXmlUrl}
+              xmlText={cached?.xmlText ?? null}
+              offline={offline}
+              scoreTime={playback.scoreTime}
+              bpm={pieceBpm}
+              timeSignature={piece.timeSignature}
+              keySignature={piece.keySignature}
+              measuresPerSystem={piece.measuresPerSystem}
+              playing={playback.playing}
+              waitMode={waitMode}
+              layout={(landscape ? (tablet ? "landscape-tablet" : "landscape-phone") : "portrait") satisfies EmbedLayoutName}
+              zoom={zoom}
+              onLoaded={setScore}
+              onNoteTapped={(tap) => playback.seek(tap.time, playback.playing)}
+            />
+          </View>
           <View style={styles.seek}>
             <Pressable onPress={playback.toggle} style={[styles.play, playback.playing && styles.playOn]} accessibilityLabel={playback.playing ? "Pause" : "Play"}>
               <Text style={styles.playText}>{playback.countdown ?? (playback.playing ? "II" : "▶")}</Text>
@@ -315,17 +332,21 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
           </View>
           {pdfError ? <Text style={styles.pdfError}>{pdfError}</Text> : null}
           {playback.ended ? <Text style={styles.ended}>End of the piece</Text> : null}
-          <KeyboardDock
-            notes={notes}
-            scoreTime={playback.scoreTime}
-            active={playback.active}
-            waiting={playback.waiting}
-            success={playback.success}
-            wrong={playback.wrong}
-            tablet={tablet}
-            landscape={landscape}
-            onKey={(note) => playback.onNote(note, "key")}
-          />
+          {showsKeyboard(viewMode) ? (
+            <KeyboardDock
+              notes={notes}
+              scoreTime={playback.scoreTime}
+              active={playback.active}
+              waiting={playback.waiting}
+              success={playback.success}
+              wrong={playback.wrong}
+              tablet={tablet}
+              landscape={landscape}
+              waterfall={!showsScore(viewMode)}
+              waitMode={waitMode}
+              onKey={(note) => playback.onNote(note, "key")}
+            />
+          ) : null}
         </View>
         {dockPanel ? <View style={{ width: 340, borderLeftWidth: 1, borderLeftColor: "#e7e0d2" }}>{panelNode}</View> : null}
       </View>
@@ -349,6 +370,7 @@ const styles = StyleSheet.create({
   headerSub: { fontFamily: fonts.medium, color: light.muted, fontSize: 12 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e7e0d2", alignItems: "center", justifyContent: "center" },
   iconText: { fontFamily: fonts.bold, fontSize: 20, color: light.ink, marginTop: -2 },
+  score: { flex: 1 },
   seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: light.bg },
   play: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" },
   playOn: { backgroundColor: "#0f172a" },

@@ -90,7 +90,11 @@ export function ScoreWebView({
   }, []);
 
   const send = useCallback((command: EmbedCommand) => {
-    webRef.current?.injectJavaScript(dispatchScript(command));
+    try {
+      webRef.current?.injectJavaScript(dispatchScript(command));
+    } catch {
+      // The score view can be dismissed while a command is in flight.
+    }
   }, []);
 
   const sendLoad = useCallback(() => {
@@ -114,6 +118,7 @@ export function ScoreWebView({
     if (sentLoad.current === key) return;
     sentLoad.current = key;
     const command = JSON.stringify({ type: "load", ...meta });
+    try {
     webRef.current.injectJavaScript(`
       (function () {
         var xml = ${JSON.stringify(xmlText)};
@@ -124,6 +129,9 @@ export function ScoreWebView({
       })();
       true;
     `);
+    } catch {
+      // The offline score view was not ready.
+    }
   }, [bpm, keySignature, measuresPerSystem, offline, pieceId, remoteXmlUrl, send, timeSignature, xmlText]);
 
   useEffect(() => {
@@ -248,7 +256,11 @@ export function ScoreWebView({
           source={source}
           onMessage={onMessage}
           onLoadEnd={() => {
-            webRef.current?.injectJavaScript(dispatchScript({ type: "hello" }));
+            try {
+              webRef.current?.injectJavaScript(dispatchScript({ type: "hello" }));
+            } catch {
+              fallback("The score page could not be reached.");
+            }
           }}
           onError={() => fallback("The score page could not be reached.")}
           onHttpError={(event) => {

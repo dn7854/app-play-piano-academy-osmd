@@ -1,19 +1,35 @@
 import { AudioContext } from "react-native-audio-api";
-import { setAudioSession } from "./session";
+import { deviceSampleRate, setAudioSession } from "./session";
 
-let ctx: any = null;
-let master: any = null;
+let ctx: AudioContext | null = null;
+let master: ReturnType<AudioContext["createGain"]> | null = null;
 
 async function context() {
   if (!ctx) {
     await setAudioSession("playback");
-    ctx = new AudioContext({ sampleRate: 44100 });
+    const rate = deviceSampleRate();
+    try {
+      ctx = rate ? new AudioContext({ sampleRate: rate }) : new AudioContext();
+    } catch {
+      return null;
+    }
   }
-  if (ctx.state === "suspended") await ctx.resume?.();
+  if (ctx.state === "suspended") {
+    try {
+      await ctx.resume?.();
+    } catch {
+      // The click can still be scheduled if the context is running.
+    }
+  }
   if (!master) {
-    master = ctx.createGain();
-    master.gain.value = 0.4;
-    master.connect(ctx.destination);
+    try {
+      master = ctx.createGain();
+      master.gain.value = 0.4;
+      master.connect(ctx.destination);
+    } catch {
+      master = null;
+      return null;
+    }
   }
   return ctx;
 }
@@ -21,7 +37,7 @@ async function context() {
 export async function playClick(accent: boolean) {
   try {
     const audio = await context();
-    if (!master) return;
+    if (!audio || !master) return;
     const osc = audio.createOscillator();
     const gain = audio.createGain();
     osc.type = "square";

@@ -19,6 +19,14 @@ type Snap = {
   ended: boolean;
 };
 
+function quietly(action: () => void) {
+  try {
+    action();
+  } catch {
+    // A player that cannot start should not close the score.
+  }
+}
+
 const empty: Snap = {
   scoreTime: 0,
   playing: false,
@@ -84,7 +92,7 @@ export function usePlayback({
   const player = useCallback(() => {
     if (playerRef.current) return playerRef.current;
     try {
-      playerRef.current = createAudioPlayer(null);
+      playerRef.current = createAudioPlayer(null, { keepAudioSessionActive: true });
       playerRef.current.shouldCorrectPitch = true;
     } catch {
       return null;
@@ -102,11 +110,9 @@ export function usePlayback({
   }, []);
 
   const pauseBacking = useCallback(() => {
-    try {
-      playerRef.current?.pause();
-    } catch {
-      // already stopped
-    }
+    const audio = playerRef.current;
+    if (!audio) return;
+    quietly(() => audio.pause());
   }, []);
 
   const syncBacking = useCallback(
@@ -116,9 +122,11 @@ export function usePlayback({
       if (!track || !audio) return;
       const trackBpm = track.bpm || live.current.pieceBpm || 1;
       const fileTime = seconds * (live.current.pieceBpm / trackBpm);
-      audio.playbackRate = backingPlaybackRate(live.current.selectedBpm, track.bpm);
+      quietly(() => {
+        audio.playbackRate = backingPlaybackRate(live.current.selectedBpm, track.bpm);
+      });
       void audio.seekTo(Math.max(0, fileTime)).catch(() => undefined);
-      if (resume && !live.current.waitMode) audio.play();
+      if (resume && !live.current.waitMode) quietly(() => audio.play());
     },
     [],
   );
@@ -266,21 +274,24 @@ export function usePlayback({
     const audio = player();
     if (!audio) return;
     if (!backing) {
-      audio.pause();
+      quietly(() => audio.pause());
       return;
     }
-    audio.replace(backing.uri);
-    audio.shouldCorrectPitch = true;
-    audio.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
+    quietly(() => {
+      audio.replace(backing.uri);
+      audio.shouldCorrectPitch = true;
+      audio.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
+    });
     if (playingRef.current && !live.current.waitMode) {
       syncBacking(scoreRef.current, true);
     }
   }, [backing?.uri, player, syncBacking]);
 
   useEffect(() => {
-    if (playerRef.current && backing) {
-      playerRef.current.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
-    }
+    const audio = playerRef.current;
+    if (audio && backing) quietly(() => {
+      audio.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
+    });
   }, [selectedBpm, backing]);
 
   useEffect(() => {
@@ -330,14 +341,17 @@ export function usePlayback({
         });
       }
       const audio = playerRef.current;
-      if (state.backing && audio && now - lastNudge.current > 1500 && audio.isLoaded) {
+      if (state.backing && audio && now - lastNudge.current > 1500) {
         lastNudge.current = now;
-        const trackBpm = state.backing.bpm || state.pieceBpm || 1;
-        const expected = scoreRef.current * (state.pieceBpm / trackBpm);
-        if (Math.abs(audio.currentTime - expected) > 0.45) {
-          void audio.seekTo(Math.max(0, expected)).catch(() => undefined);
-        }
-        if (!audio.playing) audio.play();
+        quietly(() => {
+          if (!audio.isLoaded) return;
+          const trackBpm = state.backing?.bpm || state.pieceBpm || 1;
+          const expected = scoreRef.current * (state.pieceBpm / trackBpm);
+          if (Math.abs(audio.currentTime - expected) > 0.45) {
+            void audio.seekTo(Math.max(0, expected)).catch(() => undefined);
+          }
+          if (!audio.playing) audio.play();
+        });
       }
       publish({
         playing: true,
@@ -356,8 +370,9 @@ export function usePlayback({
   useEffect(() => {
     return () => {
       stop();
-      playerRef.current?.remove();
+      const audio = playerRef.current;
       playerRef.current = null;
+      if (audio) quietly(() => audio.remove());
     };
   }, [stop]);
 

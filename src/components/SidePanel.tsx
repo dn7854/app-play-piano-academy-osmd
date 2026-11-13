@@ -2,8 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Slider from "@react-native-community/slider";
 import type { PieceSummary } from "../api/types";
 import type { PitchReading } from "../pitch/usePitch";
+import { STUDIO_VIEWS, type StudioView } from "../lib/studioView";
 
-type MidiPort = { id: string; name: string };
 import { fonts, light } from "../theme";
 
 function Toggle({
@@ -39,14 +39,16 @@ export function SidePanel({
   bpm,
   backingLabels,
   backingIndex,
+  viewMode,
+  onViewMode,
   micOn,
   zoom,
   sensitivity,
   tablet,
   pitch,
-  midiPorts,
-  midiError,
-  midiReady,
+  midiOn,
+  midiConnected,
+  midiName,
   pdfEnabled,
   pro,
   others,
@@ -69,14 +71,16 @@ export function SidePanel({
   bpm: number;
   backingLabels: string[];
   backingIndex: number;
+  viewMode: StudioView;
+  onViewMode: (mode: StudioView) => void;
   micOn: boolean;
   zoom: number;
   sensitivity: number;
   tablet: boolean;
   pitch: PitchReading;
-  midiPorts: MidiPort[];
-  midiError: string | null;
-  midiReady: boolean;
+  midiOn: boolean;
+  midiConnected: boolean;
+  midiName: string | null;
   pdfEnabled: boolean;
   pro: boolean;
   others: PieceSummary[];
@@ -107,6 +111,19 @@ export function SidePanel({
         ) : null}
       </View>
       <ScrollView contentContainerStyle={styles.body}>
+        <View style={styles.sliderBlock}>
+          <Text style={styles.section}>View</Text>
+          <View style={styles.modes}>
+            {STUDIO_VIEWS.map((item) => {
+              const selected = viewMode === item.id;
+              return (
+                <Pressable key={item.id} onPress={() => onViewMode(item.id)} style={[styles.mode, selected && styles.modeOn]}>
+                  <Text style={[styles.modeText, selected && styles.onText]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
         <Toggle title="Play mode" detail="The app plays the written piano part." on={playMode} tone="sky" onPress={onPlayMode} />
         <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
         <View style={styles.sliderBlock}>
@@ -141,38 +158,40 @@ export function SidePanel({
           })}
         </View>
         <Toggle
-          title="Mic pitch tracker"
-          detail={pitch.message || (micOn ? (pitch.liveHz ? `${Math.round(pitch.liveHz)} Hz` : "Listening for any written note.") : "Use an acoustic piano for Wait to play.")}
+          title="Acoustic piano"
+          detail={pitch.message || (micOn ? (pitch.liveHz ? `Microphone · ${Math.round(pitch.liveHz)} Hz` : "Microphone is listening for written notes.") : "Microphone stays off until this is on.")}
           on={micOn}
           tone="green"
           onPress={onMic}
         />
-        <View style={styles.sliderBlock}>
-          <View style={styles.sliderHead}>
-            <Text style={styles.section}>Mic sensitivity</Text>
-            <Text style={styles.rowValue}>{Math.round(sensitivity * 100)}</Text>
+        {micOn ? (
+          <View style={styles.sliderBlock}>
+            <View style={styles.sliderHead}>
+              <Text style={styles.section}>Mic sensitivity</Text>
+              <Text style={styles.rowValue}>{Math.round(sensitivity * 100)}</Text>
+            </View>
+            <Slider
+              minimumValue={0}
+              maximumValue={1}
+              step={0.01}
+              value={sensitivity}
+              minimumTrackTintColor="#059669"
+              maximumTrackTintColor="#e2e8f0"
+              thumbTintColor="#059669"
+              onSlidingComplete={onSensitivity}
+            />
+            <Text style={styles.help}>
+              {tablet ? "iPad starts higher, because the microphone barely hears the piano." : "Raise this if the piano is quiet. Lower it if the room is noisy."}
+            </Text>
           </View>
-          <Slider
-            minimumValue={0}
-            maximumValue={1}
-            step={0.01}
-            value={sensitivity}
-            minimumTrackTintColor="#059669"
-            maximumTrackTintColor="#e2e8f0"
-            thumbTintColor="#059669"
-            onSlidingComplete={onSensitivity}
-          />
-          <Text style={styles.help}>
-            {tablet ? "iPad starts higher, because the microphone barely hears the piano." : "Raise this if the piano is quiet. Lower it if the room is noisy."}
-          </Text>
-        </View>
-        <Pressable style={styles.row} onPress={onMidi}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel}>MIDI keyboard</Text>
-            <Text style={styles.help}>{midiError || (midiPorts.length ? midiPorts.map((port) => port.name).join(", ") : midiReady ? "Connected, waiting for a keyboard." : "USB keyboards via CoreMIDI.")}</Text>
-          </View>
-          <Text style={styles.rowValue}>{midiPorts.length ? "On" : "Connect"}</Text>
-        </Pressable>
+        ) : null}
+        <Toggle
+          title="MIDI keyboard"
+          detail={midiOn && midiConnected && midiName ? `Connected · ${midiName}` : "Not connected"}
+          on={midiOn}
+          tone="sky"
+          onPress={onMidi}
+        />
         <Pressable style={[styles.row, !pdfEnabled && styles.disabled]} onPress={onPdf} disabled={!pdfEnabled}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowLabel}>PDF download</Text>
@@ -217,6 +236,10 @@ const styles = StyleSheet.create({
   rowLabel: { fontFamily: fonts.bold, color: light.ink, fontSize: 14 },
   rowValue: { fontFamily: fonts.bold, color: light.sky, fontSize: 14 },
   section: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1.2, color: light.muted, textTransform: "uppercase", marginTop: 4 },
+  modes: { flexDirection: "row", gap: 6 },
+  mode: { flex: 1, height: 36, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  modeOn: { backgroundColor: "#0284c7", borderColor: "#0284c7" },
+  modeText: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b" },
   choices: { gap: 6 },
   choice: { borderRadius: 12, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#fff", paddingHorizontal: 12, paddingVertical: 10 },
   choiceOn: { backgroundColor: "#059669", borderColor: "#059669" },
