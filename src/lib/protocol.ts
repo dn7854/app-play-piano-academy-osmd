@@ -152,6 +152,15 @@ export function parseEmbedEvent(data: string):
   return null;
 }
 
+/**
+ * OSMD `halfTone` uses the MusicXML octave as-is (C4 = 48). Piano keys and MIDI
+ * files use C4 = 60. The embed sends the OSMD number in `pitches[].midi`.
+ */
+export function osmdHalfToneToMidi(halfTone: number): number {
+  const midi = Math.round(halfTone) + 12;
+  return Math.min(108, Math.max(21, midi));
+}
+
 /** One sounding note per pitch in each cursor step. Duration runs until the next step. */
 export function notesFromEmbed(notes: EmbedNote[]): TimedNote[] {
   const out: TimedNote[] = [];
@@ -162,7 +171,7 @@ export function notesFromEmbed(notes: EmbedNote[]): TimedNote[] {
       out.push({
         time: step.seconds,
         duration,
-        note: pitch.midi,
+        note: osmdHalfToneToMidi(pitch.midi),
         measure: step.measureIndex,
       });
     }

@@ -1,10 +1,67 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import type { PieceSummary } from "../api/types";
+import { readDiagnostics } from "../lib/diagnostics";
 import type { PitchReading } from "../pitch/usePitch";
 import { STUDIO_VIEWS, type StudioView } from "../lib/studioView";
 
 import { fonts, light } from "../theme";
+
+function DiagnosticsRow() {
+  const insets = useSafeAreaInsets();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+
+  async function show() {
+    setText("Reading…");
+    setOpen(true);
+    const log = await readDiagnostics();
+    setText(log || "No diagnostics yet.");
+  }
+
+  async function copy() {
+    const message = text.trim() || "No diagnostics yet.";
+    try {
+      await Share.share({ message });
+    } catch {
+      // The field stays selectable if the share sheet is dismissed.
+    }
+  }
+
+  return (
+    <>
+      <Pressable style={styles.row} onPress={() => void show()}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowLabel}>Diagnostics</Text>
+          <Text style={styles.help}>Play-start errors and native exceptions. Copy from here after a crash.</Text>
+        </View>
+        <Text style={styles.rowValue}>Log</Text>
+      </Pressable>
+      <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
+        <View style={[styles.logScreen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+          <View style={styles.logHead}>
+            <Text style={styles.title}>Diagnostics</Text>
+            <Pressable onPress={() => setOpen(false)} style={styles.close} accessibilityLabel="Close diagnostics">
+              <Text style={styles.closeText}>✕</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            multiline
+            editable={false}
+            selectTextOnFocus
+            value={text}
+            style={styles.logBody}
+          />
+          <Pressable style={styles.copy} onPress={() => void copy()}>
+            <Text style={styles.copyText}>Copy</Text>
+          </Pressable>
+        </View>
+      </Modal>
+    </>
+  );
+}
 
 function Toggle({
   title,
@@ -192,6 +249,7 @@ export function SidePanel({
           tone="sky"
           onPress={onMidi}
         />
+        <DiagnosticsRow />
         <Pressable style={[styles.row, !pdfEnabled && styles.disabled]} onPress={onPdf} disabled={!pdfEnabled}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowLabel}>PDF download</Text>
@@ -250,4 +308,9 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   piece: { borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", paddingHorizontal: 12, paddingVertical: 10 },
   pieceTitle: { fontFamily: fonts.bold, color: light.ink, fontSize: 14 },
+  logScreen: { flex: 1, backgroundColor: light.bg, paddingHorizontal: 16, gap: 12 },
+  logHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  logBody: { flex: 1, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, backgroundColor: "#fff", padding: 12, fontFamily: fonts.regular, fontSize: 12, color: light.ink, textAlignVertical: "top" },
+  copy: { height: 44, borderRadius: 14, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" },
+  copyText: { fontFamily: fonts.bold, color: "#fff", fontSize: 14 },
 });

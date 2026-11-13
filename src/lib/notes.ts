@@ -20,6 +20,18 @@ export function nextEventTime(notes: TimedNote[], scoreTime: number, duration: n
   return next ? next.time : duration;
 }
 
+/** Highest pitch of the first chord. The keyboard centers on this once, then stays put. */
+export function openingAnchor(notes: TimedNote[]): number | null {
+  if (!notes.length) return null;
+  let start = notes[0].time;
+  for (const note of notes) if (note.time < start) start = note.time;
+  let highest = -Infinity;
+  for (const note of notes) {
+    if (Math.abs(note.time - start) < 0.02 && note.note > highest) highest = note.note;
+  }
+  return Number.isFinite(highest) ? highest : null;
+}
+
 export function soundingNotes(notes: TimedNote[], scoreTime: number): number[] {
   const midis = notes.filter((note) => scoreTime >= note.time && scoreTime <= note.time + note.duration).map((note) => note.note);
   return [...new Set(midis)];

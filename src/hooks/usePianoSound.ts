@@ -6,6 +6,7 @@ import { Platform } from "react-native";
 import { createAudioPlayer } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import { useRef, useCallback, useEffect, useState } from "react";
+import { diagnosticText, recordDiagnostic } from "../lib/diagnostics";
 import { getSampleDetails } from "../lib/sampleMapper";
 
 const players = new Map<number, AudioPlayer>();
@@ -20,7 +21,9 @@ async function initPiano(): Promise<void> {
       try {
         players.set(m, createAudioPlayer(source, { keepAudioSessionActive: true }));
         await new Promise((r) => setTimeout(r, 15));
-      } catch (_) {}
+      } catch (error) {
+        recordDiagnostic("audio", `createAudioPlayer ${m} ${diagnosticText(error)}`);
+      }
     }
   }
   globalReady = true;
@@ -33,7 +36,9 @@ async function ensure(midi: number): Promise<void> {
   try {
     players.set(midi, createAudioPlayer(source, { keepAudioSessionActive: true }));
     await new Promise((r) => setTimeout(r, 10));
-  } catch (_) {}
+  } catch (error) {
+    recordDiagnostic("audio", `createAudioPlayer ${midi} ${diagnosticText(error)}`);
+  }
 }
 
 async function playNoteRaw(midi: number, velocity = 1): Promise<void> {
@@ -46,7 +51,11 @@ async function playNoteRaw(midi: number, velocity = 1): Promise<void> {
     const maxVol = Math.max(0, Math.min(1, velocity)) * (volumePct / 100);
     p.volume = maxVol;
     await p.seekTo(0);
-    await p.play();
+    try {
+      await p.play();
+    } catch (error) {
+      recordDiagnostic("audio", `play ${midi} ${diagnosticText(error)}`);
+    }
     setTimeout(() => {
       const start = Date.now();
       const vol = p.volume;
@@ -55,14 +64,18 @@ async function playNoteRaw(midi: number, velocity = 1): Promise<void> {
         const v = vol * Math.max(0, 1 - e / 0.5);
         if (v <= 0.01) {
           clearInterval(iv);
-          try { p.pause(); } catch (_) {}
+          try { p.pause(); } catch (error) {
+            recordDiagnostic("audio", `pause ${midi} ${diagnosticText(error)}`);
+          }
           p.volume = 0;
         } else {
           p.volume = v;
         }
       }, 50);
     }, 1000);
-  } catch (_) {}
+  } catch (error) {
+    recordDiagnostic("audio", `playPianoNote ${midi} ${diagnosticText(error)}`);
+  }
 }
 
 /** Velocity is 0–1, matching the old sampler. */

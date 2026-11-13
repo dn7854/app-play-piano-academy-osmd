@@ -1,4 +1,5 @@
 import { AudioContext } from "react-native-audio-api";
+import { diagnosticText, recordDiagnostic } from "../lib/diagnostics";
 import { deviceSampleRate, setAudioSession } from "./session";
 
 let ctx: AudioContext | null = null;
@@ -10,15 +11,16 @@ async function context() {
     const rate = deviceSampleRate();
     try {
       ctx = rate ? new AudioContext({ sampleRate: rate }) : new AudioContext();
-    } catch {
+    } catch (error) {
+      recordDiagnostic("audio", `AudioContext ${diagnosticText(error)}`);
       return null;
     }
   }
   if (ctx.state === "suspended") {
     try {
       await ctx.resume?.();
-    } catch {
-      // The click can still be scheduled if the context is running.
+    } catch (error) {
+      recordDiagnostic("audio", `AudioContext resume ${diagnosticText(error)}`);
     }
   }
   if (!master) {
@@ -26,7 +28,8 @@ async function context() {
       master = ctx.createGain();
       master.gain.value = 0.4;
       master.connect(ctx.destination);
-    } catch {
+    } catch (error) {
+      recordDiagnostic("audio", `AudioContext gain ${diagnosticText(error)}`);
       master = null;
       return null;
     }
@@ -35,6 +38,7 @@ async function context() {
 }
 
 export async function playClick(accent: boolean) {
+  recordDiagnostic("play", `count-in click accent=${accent}`);
   try {
     const audio = await context();
     if (!audio || !master) return;
@@ -49,7 +53,7 @@ export async function playClick(accent: boolean) {
     gain.connect(master);
     osc.start(now);
     osc.stop(now + 0.07);
-  } catch {
-    // The count-in still shows its numbers.
+  } catch (error) {
+    recordDiagnostic("play", `count-in click failed ${diagnosticText(error)}`);
   }
 }

@@ -4,6 +4,7 @@ import { playClick } from "../audio/piano";
 import { playPianoNote } from "../hooks/usePianoSound";
 import { isPreviewLocked } from "../lib/preview-limit";
 import { nextEventTime, soundingNotes, waitingNotes, type TimedNote } from "../lib/notes";
+import { diagnosticText, recordDiagnostic } from "../lib/diagnostics";
 import { backingPlaybackRate, countIn, tempoRatio } from "../lib/tempo";
 
 export type BackingTrack = { uri: string; bpm: number | null };
@@ -19,11 +20,16 @@ type Snap = {
   ended: boolean;
 };
 
-function quietly(action: () => void) {
+function quietly(label: string, action: () => void | Promise<unknown>) {
   try {
-    action();
-  } catch {
-    // A player that cannot start should not close the score.
+    const result = action();
+    if (result && typeof (result as Promise<unknown>).then === "function") {
+      void (result as Promise<unknown>).catch((error) => {
+        recordDiagnostic("audio", `${label} ${diagnosticText(error)}`);
+      });
+    }
+  } catch (error) {
+    recordDiagnostic("audio", `${label} ${diagnosticText(error)}`);
   }
 }
 
@@ -94,7 +100,8 @@ export function usePlayback({
     try {
       playerRef.current = createAudioPlayer(null, { keepAudioSessionActive: true });
       playerRef.current.shouldCorrectPitch = true;
-    } catch {
+    } catch (error) {
+      recordDiagnostic("audio", `createAudioPlayer backing ${diagnosticText(error)}`);
       return null;
     }
     return playerRef.current;
@@ -112,7 +119,7 @@ export function usePlayback({
   const pauseBacking = useCallback(() => {
     const audio = playerRef.current;
     if (!audio) return;
-    quietly(() => audio.pause());
+    quietly("pause", () => audio.pause());
   }, []);
 
   const syncBacking = useCallback(
@@ -122,11 +129,13 @@ export function usePlayback({
       if (!track || !audio) return;
       const trackBpm = track.bpm || live.current.pieceBpm || 1;
       const fileTime = seconds * (live.current.pieceBpm / trackBpm);
-      quietly(() => {
+      quietly("playbackRate", () => {
         audio.playbackRate = backingPlaybackRate(live.current.selectedBpm, track.bpm);
       });
-      void audio.seekTo(Math.max(0, fileTime)).catch(() => undefined);
-      if (resume && !live.current.waitMode) quietly(() => audio.play());
+      void audio.seekTo(Math.max(0, fileTime)).catch((error) => {
+        recordDiagnostic("audio", `seekTo ${diagnosticText(error)}`);
+      });
+      if (resume && !live.current.waitMode) quietly("play", () => audio.play());
     },
     [],
   );
@@ -145,10 +154,14 @@ export function usePlayback({
       lastWall.current = performance.now();
       playingRef.current = true;
       const waiting = live.current.waitMode ? waitingNotes(notesRef.current, seconds) : [];
-      if (live.current.backing && waiting.length === 0) {
+      recordDiagnostic("play", `audio start t=${seconds.toFixed(2)} backing=${live.current.backing ? "yes" : "no"}`);
+      const track = live.current.backing;
+      if (track && waiting.length === 0) {
         const audio = player();
         if (audio) {
-          audio.playbackRate = backingPlaybackRate(live.current.selectedBpm, live.current.backing.bpm);
+          quietly("playbackRate", () => {
+            audio.playbackRate = backingPlaybackRate(live.current.selectedBpm, track.bpm);
+          });
           syncBacking(seconds, true);
         }
       }
@@ -199,10 +212,12 @@ export function usePlayback({
       for (const id of timers.current) clearTimeout(id);
       timers.current = [];
       if (!fromStart) {
+        recordDiagnostic("play", `resume t=${scoreRef.current.toFixed(2)}`);
         arm(scoreRef.current);
         return;
       }
       const [clicks, quarters] = countIn(timeSignature);
+      recordDiagnostic("play", `count-in clicks=${clicks}`);
       const gap = ((60 / Math.max(1, live.current.selectedBpm)) * quarters) * 1000;
       playingRef.current = false;
       let left = clicks;
@@ -274,10 +289,10 @@ export function usePlayback({
     const audio = player();
     if (!audio) return;
     if (!backing) {
-      quietly(() => audio.pause());
+      quietly("pause", () => audio.pause());
       return;
     }
-    quietly(() => {
+    quietly("replace", () => {
       audio.replace(backing.uri);
       audio.shouldCorrectPitch = true;
       audio.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
@@ -289,7 +304,7 @@ export function usePlayback({
 
   useEffect(() => {
     const audio = playerRef.current;
-    if (audio && backing) quietly(() => {
+    if (audio && backing) quietly("playbackRate", () => {
       audio.playbackRate = backingPlaybackRate(selectedBpm, backing.bpm);
     });
   }, [selectedBpm, backing]);
@@ -343,12 +358,14 @@ export function usePlayback({
       const audio = playerRef.current;
       if (state.backing && audio && now - lastNudge.current > 1500) {
         lastNudge.current = now;
-        quietly(() => {
+        quietly("nudge", () => {
           if (!audio.isLoaded) return;
           const trackBpm = state.backing?.bpm || state.pieceBpm || 1;
           const expected = scoreRef.current * (state.pieceBpm / trackBpm);
           if (Math.abs(audio.currentTime - expected) > 0.45) {
-            void audio.seekTo(Math.max(0, expected)).catch(() => undefined);
+            void audio.seekTo(Math.max(0, expected)).catch((error) => {
+              recordDiagnostic("audio", `seekTo ${diagnosticText(error)}`);
+            });
           }
           if (!audio.playing) audio.play();
         });
@@ -372,7 +389,7 @@ export function usePlayback({
       stop();
       const audio = playerRef.current;
       playerRef.current = null;
-      if (audio) quietly(() => audio.remove());
+      if (audio) quietly("remove", () => audio.remove());
     };
   }, [stop]);
 

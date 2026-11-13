@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { TimedNote } from "../lib/notes";
+import { openingAnchor, type TimedNote } from "../lib/notes";
 import { fonts } from "../theme";
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -65,17 +65,36 @@ export function KeyboardDock({
   const metrics = keyboardMetrics(tablet, landscape);
   const layout = useMemo(() => layoutKeys(metrics.white, metrics.black), [metrics.white, metrics.black]);
   const scroller = useRef<ScrollView>(null);
+  const centeredFor = useRef<TimedNote[] | null>(null);
   const [viewport, setViewport] = useState(0);
   const [lane, setLane] = useState(0);
+  const [tapped, setTapped] = useState<number | null>(null);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pixelsPerSecond = Math.max(lane * 0.85, 220);
   const lookAhead = lane > 0 ? lane / pixelsPerSecond : 1.2;
-  const focus = waiting[0] ?? active[0];
 
   useEffect(() => {
-    if (focus == null || viewport <= 0) return;
-    const x = xOf(layout, focus, metrics.white, metrics.black);
-    scroller.current?.scrollTo({ x: Math.max(0, x - viewport / 2), animated: true });
-  }, [focus, layout, metrics.black, metrics.white, viewport]);
+    return () => {
+      if (tapTimer.current) clearTimeout(tapTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (viewport <= 0 || centeredFor.current === notes) return;
+    const anchor = openingAnchor(notes);
+    if (anchor == null) return;
+    centeredFor.current = notes;
+    const x = xOf(layout, anchor, metrics.white, metrics.black);
+    const keyW = isBlack(anchor) ? metrics.black : metrics.white;
+    scroller.current?.scrollTo({ x: Math.max(0, x + keyW / 2 - viewport / 2), animated: false });
+  }, [layout, metrics.black, metrics.white, notes, viewport]);
+
+  function press(midi: number) {
+    onKey(midi);
+    setTapped(midi);
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => setTapped(null), 280);
+  }
 
   const falling = waterfall
     ? notes.filter((note) => note.time < scoreTime + lookAhead && note.time + note.duration > scoreTime - 0.05)
@@ -86,9 +105,9 @@ export function KeyboardDock({
     const isOn = active.includes(midi);
     const isOk = success.includes(midi);
     const isBad = wrong.includes(midi);
-    if (isBad) return { backgroundColor: black ? "#e11d48" : "#fb7185", shadowColor: "#fb7185" };
     if (isWait) return { backgroundColor: black ? "#059669" : "#34d399", shadowColor: "#34d399" };
     if (isOk) return { backgroundColor: black ? "#10b981" : "#6ee7b7", shadowColor: "#6ee7b7" };
+    if (tapped === midi || isBad) return { backgroundColor: black ? "#ea580c" : "#fb923c", shadowColor: "#f97316" };
     if (isOn) return { backgroundColor: black ? "#38bdf8" : "#7dd3fc", shadowColor: "#38bdf8" };
     return null;
   }
@@ -98,7 +117,11 @@ export function KeyboardDock({
       style={[styles.dock, waterfall && styles.dockFill]}
       onLayout={waterfall ? (event) => setLane(Math.max(0, event.nativeEvent.layout.height - metrics.keyH)) : undefined}
     >
-      <View style={[styles.saber, waitMode ? styles.hitWait : styles.hitPlay, waterfall ? { bottom: metrics.keyH } : { top: 0 }]} />
+      <View pointerEvents="none" style={[styles.saberWrap, waterfall ? { bottom: metrics.keyH - 14 } : { top: 0 }]}>
+        <View style={[styles.saberGlow, waitMode ? styles.glowWait : styles.glowPlay]} />
+        <View style={[styles.saberMid, waitMode ? styles.midWait : styles.midPlay]} />
+        <View style={[styles.saberCore, waitMode ? styles.coreWait : styles.corePlay]} />
+      </View>
       <ScrollView
         ref={scroller}
         horizontal
@@ -143,7 +166,7 @@ export function KeyboardDock({
               return (
                 <Pressable
                   key={key.midi}
-                  onPress={() => onKey(key.midi)}
+                  onPress={() => press(key.midi)}
                   style={[
                     styles.white,
                     { left: key.x, width: metrics.white - 2, height: metrics.keyH },
@@ -162,7 +185,7 @@ export function KeyboardDock({
               return (
                 <Pressable
                   key={key.midi}
-                  onPress={() => onKey(key.midi)}
+                  onPress={() => press(key.midi)}
                   style={[
                     styles.black,
                     { left: key.x, width: metrics.black, height: metrics.blackH },
@@ -185,18 +208,33 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   fall: { position: "relative", overflow: "hidden", backgroundColor: "#05080f" },
   fade: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.72)" },
-  saber: {
+  saberWrap: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 3,
-    zIndex: 5,
+    height: 28,
+    zIndex: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saberGlow: { position: "absolute", left: 0, right: 0, height: 22, opacity: 0.38 },
+  saberMid: { position: "absolute", left: 0, right: 0, height: 12, opacity: 0.72 },
+  saberCore: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 8,
+    elevation: 0,
     shadowOpacity: 1,
-    shadowRadius: 12,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
   },
-  hitPlay: { backgroundColor: "#7dd3fc", shadowColor: "#38bdf8" },
-  hitWait: { backgroundColor: "#6ee7b7", shadowColor: "#34d399" },
+  glowPlay: { backgroundColor: "#38bdf8" },
+  midPlay: { backgroundColor: "#7dd3fc" },
+  corePlay: { backgroundColor: "#f0f9ff", shadowColor: "#38bdf8" },
+  glowWait: { backgroundColor: "#34d399" },
+  midWait: { backgroundColor: "#6ee7b7" },
+  coreWait: { backgroundColor: "#ecfdf5", shadowColor: "#34d399" },
   beam: {
     position: "absolute",
     borderRadius: 6,
@@ -228,7 +266,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 10,
+    elevation: 4,
   },
   noteName: { fontFamily: fonts.bold, fontSize: 10, color: "#0f172a" },
 });

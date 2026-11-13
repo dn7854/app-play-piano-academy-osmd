@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danijelbrecelj.playpianoacademymobile",
-      "buildNumber": "3",
+      "buildNumber": "6",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "D8R Piano Academy listens for the notes you play on an acoustic piano so Wait to play can move ahead. The audio stays on this device.",
         "UIBackgroundModes": [

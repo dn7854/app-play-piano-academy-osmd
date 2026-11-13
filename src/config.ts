@@ -9,10 +9,6 @@ export const config = {
   productId: process.env.EXPO_PUBLIC_REVENUECAT_PRODUCT_ID || "d8r_piano_academy_pro",
   /** Free playback of an isPremium piece, in score seconds at the written tempo. */
   previewSeconds: 20,
-  /** How long to wait for the hosted embed's ready message before the bundled score view. */
-  embedReadyTimeoutMs: 5000,
-  /** After a compatible ready, how long to wait for loaded before falling back. */
-  embedLoadedTimeoutMs: 12000,
 };
 
 export function resolveAssetUrl(url: string | null | undefined): string | null {
@@ -22,6 +18,3 @@ export function resolveAssetUrl(url: string | null | undefined): string | null {
   return `${config.assetBase}/${path}`;
 }
 
-export function embedPageUrl(pieceId: string) {
-  return `${config.apiBase}/academy-studio/embed/${encodeURIComponent(pieceId)}`;
-}

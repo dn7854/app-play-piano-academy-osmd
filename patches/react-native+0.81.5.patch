@@ -1,24 +1,87 @@
 diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
-index 2a67797..7b2da88 100644
+index 2a67797..c8124d8 100644
 --- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 +++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
-@@ -435,7 +435,18 @@ void ObjCTurboModule::performVoidMethodInvocation(
+@@ -39,6 +39,56 @@ static int32_t getUniqueId()
+   return counter++;
+ }
+ 
++// Async void TurboModule calls run on the module queue. Turning an NSException
++// into a Hermes JSError there is a use-after-free (SIGSEGV). Record the
++// module, method, exception name and reason instead. The app reads this file.
++static void D8RAppendNativeDiagnostic(const char *moduleName, const char *methodName, NSString *exceptionName, NSString *reason)
++{
++  @try {
++    NSString *dir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
++    if (dir.length == 0) {
++      return;
++    }
++    NSISO8601DateFormatter *formatter = [NSISO8601DateFormatter new];
++    formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
++    formatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
++    NSString *stamp = [formatter stringFromDate:[NSDate date]] ?: @"";
++    NSString *line = [NSString stringWithFormat:@"%@ [native] %s.%s %@ | %@\n",
++                                                stamp,
++                                                moduleName ?: "?",
++                                                methodName ?: "?",
++                                                exceptionName ?: @"NSException",
++                                                reason ?: @""];
++    NSString *path = [dir stringByAppendingPathComponent:@"d8r-diagnostics-native.log"];
++    static NSObject *lock;
++    static dispatch_once_t lockOnce;
++    dispatch_once(&lockOnce, ^{
++      lock = [NSObject new];
++    });
++    @synchronized(lock) {
++      NSFileManager *files = [NSFileManager defaultManager];
++      if ([files fileExistsAtPath:path]) {
++        NSDictionary *attrs = [files attributesOfItemAtPath:path error:nil];
++        unsigned long long size = [attrs fileSize];
++        if (size > 180000) {
++          NSData *all = [NSData dataWithContentsOfFile:path];
++          if (all.length > 90000) {
++            NSData *tail = [all subdataWithRange:NSMakeRange(all.length - 90000, 90000)];
++            [tail writeToFile:path atomically:YES];
++          }
++        }
++        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
++        [handle seekToEndOfFile];
++        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
++        [handle closeFile];
++      } else {
++        [files createFileAtPath:path contents:[line dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
++      }
++    }
++  } @catch (NSException *ignored) {
++  }
++}
++
+ namespace facebook::react {
+ 
+ namespace TurboModuleConvertUtils {
+@@ -435,7 +485,24 @@ void ObjCTurboModule::performVoidMethodInvocation(
      @try {
        [inv invokeWithTarget:strongModule];
      } @catch (NSException *exception) {
 -      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
-+      if (shouldVoidMethodsExecuteSync_) {
-+        // Sync void calls still run on the JS thread, where the caller can observe this.
-+        throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
-+      }
-+      // Async void methods have already returned to JavaScript. Re-throwing here
-+      // (including via convertNSExceptionToJSError) escapes this block on the
-+      // module queue. iOS 26 turns that into SIGABRT. Log and keep the app alive.
++      NSString *exceptionName = exception.name ?: @"NSException";
++      NSString *reason = exception.reason ?: @"";
 +      NSLog(
-+          @"Exception thrown while invoking async void method %s.%s: %@",
++          @"[d8r] void TurboModule %s.%s threw %@: %@",
 +          moduleName,
 +          methodNameStr.c_str(),
-+          exception);
++          exceptionName,
++          reason);
++      D8RAppendNativeDiagnostic(moduleName, methodNameStr.c_str(), exceptionName, reason);
++      if (shouldVoidMethodsExecuteSync_) {
++        // Sync void calls run on the JS thread via invokeSync, so the caller can catch this.
++        throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      }
++      // Async void calls are already on com.meta.react.turbomodulemanager.queue.
++      // convertNSExceptionToJSError touches Hermes off that thread and SIGSEGVs.
++      // Newer RN (facebook/react-native#56265) rethrows the ObjC exception instead
++      // of building a JSError here. Logging keeps the process alive so the reason
++      // can be read from the diagnostics file.
      } @finally {
        [retainedObjectsForInvocation removeAllObjects];
      }

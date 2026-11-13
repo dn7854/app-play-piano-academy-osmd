@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { setAudioModeAsync } from "expo-audio";
 import { AudioManager } from "react-native-audio-api";
+import { diagnosticText, recordDiagnostic } from "../lib/diagnostics";
 import { sessionAttempts, type SessionKind, type SessionProfile } from "./sessionProfile";
 
 let tail: Promise<void> = Promise.resolve();
@@ -32,9 +33,11 @@ async function applyProfile(profile: SessionProfile): Promise<boolean> {
       interruptionMode: "mixWithOthers",
       shouldPlayInBackground: true,
     });
-  } catch {
-    // expo-audio remembers player flags. The sampler session below is the one that has to stick.
+  } catch (error) {
+    recordDiagnostic("audio", `setAudioModeAsync ${diagnosticText(error)}`);
   }
+  const options = profile.iosOptions.join("+") || "none";
+  recordDiagnostic("audio", `setAudioSessionOptions ${profile.iosCategory}/${profile.iosMode}/${options}`);
   try {
     AudioManager.setAudioSessionOptions({
       iosCategory: profile.iosCategory,
@@ -43,7 +46,8 @@ async function applyProfile(profile: SessionProfile): Promise<boolean> {
     });
     await AudioManager.setAudioSessionActivity(true);
     return true;
-  } catch {
+  } catch (error) {
+    recordDiagnostic("audio", `setAudioSession ${profile.iosCategory}/${profile.iosMode} ${diagnosticText(error)}`);
     return false;
   }
 }
@@ -64,8 +68,8 @@ export function deviceSampleRate(): number | null {
   try {
     const rate = AudioManager.getDevicePreferredSampleRate();
     if (typeof rate === "number" && Number.isFinite(rate) && rate >= 8000 && rate <= 192000) return Math.round(rate);
-  } catch {
-    // The session may not be active yet.
+  } catch (error) {
+    recordDiagnostic("audio", `getDevicePreferredSampleRate ${diagnosticText(error)}`);
   }
   return null;
 }

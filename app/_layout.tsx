@@ -4,8 +4,10 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
+import { installDiagnostics } from "../src/lib/diagnostics";
 import { PurchasesProvider } from "../src/purchases";
 
+installDiagnostics();
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {

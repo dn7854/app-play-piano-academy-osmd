@@ -1,7 +1,8 @@
 import { ApiError, flowEndpointMissing, normalizeFlow } from "../api/client";
 import { parseMidi } from "./midi";
-import { notesFromEmbed, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
-import { matchAnyExpected, waitingNotes } from "./notes";
+import { notesFromEmbed, osmdHalfToneToMidi, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
+import { portraitPageScale } from "./embedScale";
+import { matchAnyExpected, openingAnchor, waitingNotes } from "./notes";
 import { clampTempo, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
 import { sessionAttempts } from "../audio/sessionProfile";
@@ -62,8 +63,8 @@ const loaded = parseEmbedEvent(
     pageCount: 1,
     measures: [{ index: 0, number: 1, startWhole: 0, durationWhole: 1, startSeconds: 0, timeSignature: "4/4" }],
     notes: [
-      { index: 0, measureIndex: 0, whole: 0, seconds: 0, pitches: [{ midi: 60, staff: 1 }, { midi: 64, staff: 1 }] },
-      { index: 1, measureIndex: 0, whole: 0.25, seconds: 1, pitches: [{ midi: 67, staff: 1 }] },
+      { index: 0, measureIndex: 0, whole: 0, seconds: 0, pitches: [{ midi: 48, staff: 1 }, { midi: 52, staff: 1 }] },
+      { index: 1, measureIndex: 0, whole: 0.25, seconds: 1, pitches: [{ midi: 55, staff: 1 }] },
     ],
   }),
 );
@@ -74,7 +75,21 @@ if (loaded?.kind === "loaded") {
   assert(waitingNotes(flat, 0).sort().join() === "60,64", "waiting chord");
   assert(matchAnyExpected(329.6, [60, 64]) === 64, "any note of the chord");
   assert(flat[2].time === 1, "next step time");
+  assert(flat[0].note === 60 && flat[2].note === 67, "osmd halfTone becomes midi");
+  assert(openingAnchor(flat) === 64, "opening anchor is the highest note of the first chord");
 }
+
+assert(osmdHalfToneToMidi(48) === 60, "middle C");
+assert(osmdHalfToneToMidi(9) === 21, "A0");
+assert(osmdHalfToneToMidi(96) === 108, "C8");
+assert(osmdHalfToneToMidi(200) === 108, "midi ceiling");
+assert(osmdHalfToneToMidi(-40) === 21, "midi floor");
+
+const naturalH = 1152 * 297 / 210;
+const fitted = portraitPageScale(360, 480, 1152, naturalH, 360 / 1152);
+assert(fitted != null && fitted < 360 / 1152 && Math.abs(fitted - Math.min(360 / 1152, 480 / naturalH)) < 1e-9, "portrait fits the page height");
+const zoomed = portraitPageScale(360, 480, 1152, naturalH, (360 / 1152) * 2);
+assert(zoomed != null && fitted != null && Math.abs(zoomed - fitted * 2) < 1e-9, "portrait keeps the zoom");
 
 assert(isPreviewLocked(true, PREVIEW_SECONDS), "preview locks at 20");
 assert(!isPreviewLocked(false, 30), "free piece");

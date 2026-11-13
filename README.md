@@ -25,7 +25,7 @@ All of these are public `EXPO_PUBLIC_` values. See `.env.example`.
 
 | Variable | Purpose |
 | --- | --- |
-| `EXPO_PUBLIC_API_BASE_URL` | Origin for the mobile API and the hosted embed. Default `https://www.danijelbrecelj.com`. |
+| `EXPO_PUBLIC_API_BASE_URL` | Origin for the mobile API. Default `https://www.danijelbrecelj.com`. |
 | `EXPO_PUBLIC_ASSET_BASE_URL` | CDN used when MusicXML, MIDI, or MP3 paths are relative. |
 | `EXPO_PUBLIC_REVENUECAT_IOS_KEY` | RevenueCat public iOS SDK key. |
 | `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | RevenueCat public Android SDK key. |
@@ -68,31 +68,11 @@ Until the API is deployed, those routes redirect to sign-in and the library expl
 
 ## Score view
 
-The hosted page is `https://www.danijelbrecelj.com/academy-studio/embed/{pieceId}`. The app loads it first so OSMD fixes on the website show up here without an app release.
+The score page is the copy inside the app, `assets/academy-embed/index.html`. The studio on danijelbrecelj.com is a separate layout and is not loaded. `src/score/embedPatch.ts` fits a portrait A4 page into the score slot and lets one finger drag the page diagonally.
 
-The offline copy is `assets/academy-embed/index.html`. Regenerate it with:
+`npm run build:academy-embed` only checks that the snapshot is present. It does not copy the website embed.
 
-```bash
-npm run build:academy-embed
-```
-
-If you have the website checkout:
-
-```bash
-npm run build:academy-embed -- --repo /path/to/app.danijelbrecelj.com
-```
-
-That copies `public/academy-embed/index.html` from the website when the file is present (the website's own `npm run build:academy-embed` writes it). Otherwise this repo builds the same protocol into the HTML, with OpenSheetMusicDisplay inlined so it works offline.
-
-Fallback to the bundled page happens when:
-
-- the device is offline
-- the hosted page errors or returns HTTP 400+
-- `ready` does not arrive within 5 seconds
-- `ready.protocolVersion` is not `1`
-- `loaded` does not arrive within 12 seconds of a compatible `ready`
-
-MusicXML, MIDI, and MP3 files for pieces that have been opened are stored under the app cache. Offline, the bundled page receives `load` with a blob `musicXmlUrl` built from the cached MusicXML. `data:` URLs are not accepted by the embed.
+MusicXML, MIDI, and MP3 files for pieces that have been opened are stored under the app cache. Offline, the page receives `load` with a blob `musicXmlUrl` built from the cached MusicXML. `data:` URLs are not accepted by the embed.
 
 ### Protocol version 1
 
@@ -128,6 +108,16 @@ eas submit --platform ios --profile production
 
 `eas init` writes the EAS project id into `app.json`. The Expo account must be `danijelbrecelj`. The iOS bundle id must stay `com.danijelbrecelj.playpianoacademymobile` so the build replaces the live app.
 
+EAS keeps the iOS dSYM for each build. `eas.json` does not turn that off. Download the dSYM from the matching build on the EAS build page, or from App Store Connect after submit. Match it to the build number in the `.ips` (production auto-increments `ios.buildNumber`).
+
+To symbolicate one address from an `.ips`:
+
+```bash
+xcrun atos -o App.dSYM/Contents/Resources/DWARF/<binary> -arch arm64 -l <load address> <address>
+```
+
+`<binary>` is the DWARF file inside the unzipped dSYM. `<load address>` is that binary's load address in the `.ips` image list, and `<address>` is the frame you want. Xcode can symbolicate the whole report once that dSYM is available to Organizer.
+
 Microphone purpose string (already in `app.json`):
 
 > D8R Piano Academy listens for the notes you play on an acoustic piano so Wait to play can move ahead. The audio stays on this device.
@@ -145,8 +135,8 @@ npx expo-doctor
 - Store product `d8r_piano_academy_pro` (non-consumable on the App Store, one-time product on Google Play), the RevenueCat entitlement `d8r_piano_academy_pro`, a Lifetime package on the current offering, and the SDK keys.
 - `eas init` on the `danijelbrecelj` account, then a production iOS build.
 - Replace `assets/icon.png`, `assets/adaptive-icon.png`, and `assets/splash-icon.png` with the three icons from the current App Store app if these stand-ins should not ship. The private keyboard-scores repo was not readable from this environment, so those files could not be copied.
-- Merge and deploy website PR 4 so the hosted embed and `/api/mobile/academy-studio/*` are live. Until then the app uses the bundled score view whenever a MusicXML file is already cached, and the library shows that the API is not deployed.
+- Merge and deploy website PR 4 so `/api/mobile/academy-studio/*` is live. Until then the library shows that the API is not deployed. The score page itself is the copy inside the app.
 
 ## Notes on the sources
 
-The bundled score is the website's `public/academy-embed/index.html`. MIDI uses `@motiz88/react-native-midi` with `patches/@motiz88+react-native-midi+0.0.6.patch` and `src/hooks/useMidiController.ts` from the previous app. The sampler is `src/hooks/usePianoSound.ts` and `src/lib/sampleMapper.ts`, loading `assets/audio/piano/<note>.mp3`. Those mp3s and the three icon files are stand-ins until the owner copies the real binaries in; the filenames match the old app. The 20-second premium gate is `isPreviewLocked` from the website: automatic playback stops at 20 seconds, and seeking into that region opens the paywall. Wait mode is not gated, matching the website player.
+The score page is `assets/academy-embed/index.html`. MIDI uses `@motiz88/react-native-midi` with `patches/@motiz88+react-native-midi+0.0.6.patch` and `src/hooks/useMidiController.ts` from the previous app. The sampler is `src/hooks/usePianoSound.ts` and `src/lib/sampleMapper.ts`, loading `assets/audio/piano/<note>.mp3`. Those mp3s and the three icon files are stand-ins until the owner copies the real binaries in; the filenames match the old app. The 20-second premium gate is `isPreviewLocked` from the website: automatic playback stops at 20 seconds, and seeking into that region opens the paywall. Wait mode is not gated, matching the website player.

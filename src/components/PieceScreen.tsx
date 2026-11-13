@@ -13,6 +13,7 @@ import { Paywall } from "./Paywall";
 import { SidePanel } from "./SidePanel";
 import { TempoModal } from "./TempoModal";
 import { useMidiController } from "../hooks/useMidiController";
+import { recordDiagnostic } from "../lib/diagnostics";
 import { notesFromEmbed, type EmbedLayoutName, type LoadedScore } from "../lib/protocol";
 import { matchAnyExpected, type TimedNote } from "../lib/notes";
 import { clampTempo } from "../lib/tempo";
@@ -55,6 +56,18 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+function PlayMark({ playing }: { playing: boolean }) {
+  if (playing) {
+    return (
+      <View style={styles.pauseMark}>
+        <View style={styles.pauseBar} />
+        <View style={styles.pauseBar} />
+      </View>
+    );
+  }
+  return <View style={styles.playMark} />;
+}
+
 export function PieceScreen({ id, collection }: { id: string; collection?: string }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -69,7 +82,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [panel, setPanel] = useState(dockPanel);
-  const [playMode, setPlayMode] = useState(false);
+  const [playMode, setPlayMode] = useState(true);
   const waitMode = !playMode;
   const [zoom, setZoom] = useState(1);
   const [selectedBpm, setSelectedBpm] = useState(120);
@@ -183,6 +196,18 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
     if (!micOn) void setAudioSession("playback");
   }, [micOn]);
 
+  const playEdge = useRef(false);
+  useEffect(() => {
+    const on = playback.playing || playback.countdown != null;
+    if (on && !playEdge.current) {
+      recordDiagnostic(
+        "play",
+        `start midi=${midiEnabled ? "on" : "off"} connected=${midi.isConnected ? "yes" : "no"} name=${midi.deviceName || "none"} mic=${micOn ? "on" : "off"} keep-awake=not-called haptics=not-called`,
+      );
+    }
+    playEdge.current = on;
+  }, [midi.deviceName, midi.isConnected, midiEnabled, micOn, playback.countdown, playback.playing]);
+
   useEffect(() => {
     if (!seeking) setSeekValue(playback.scoreTime);
   }, [playback.scoreTime, seeking]);
@@ -260,8 +285,12 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
     />
   );
 
+  const counting = playback.countdown != null;
+  const transportOn = playback.playing || counting;
+
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
+      <View style={{ flex: 1, paddingTop: insets.top }}>
       <View style={styles.header}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.iconBtn} accessibilityLabel="Back to the library">
           <Text style={styles.iconText}>‹</Text>
@@ -281,14 +310,10 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         ) : null}
       </View>
       <View style={{ flex: 1, flexDirection: dockPanel ? "row" : "column" }}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.stage}>
           <View
             pointerEvents={showsScore(viewMode) ? "auto" : "none"}
-            style={
-              showsScore(viewMode)
-                ? styles.score
-                : { position: "absolute", opacity: 0, left: -(width + 80), width: Math.max(width, 320), height: Math.max(height, 480) }
-            }
+            style={showsScore(viewMode) ? styles.score : styles.scoreParked}
           >
             <ScoreWebView
               pieceId={piece.id}
@@ -309,8 +334,8 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             />
           </View>
           <View style={styles.seek}>
-            <Pressable onPress={playback.toggle} style={[styles.play, playback.playing && styles.playOn]} accessibilityLabel={playback.playing ? "Pause" : "Play"}>
-              <Text style={styles.playText}>{playback.countdown ?? (playback.playing ? "II" : "▶")}</Text>
+            <Pressable onPress={playback.toggle} style={styles.play} accessibilityLabel={transportOn ? "Pause" : "Play"}>
+              <PlayMark playing={transportOn} />
             </Pressable>
             <Text style={styles.time}>{formatTime(seeking ? seekValue : playback.scoreTime)}</Text>
             <Slider
@@ -350,8 +375,14 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         </View>
         {dockPanel ? <View style={{ width: 340, borderLeftWidth: 1, borderLeftColor: "#e7e0d2" }}>{panelNode}</View> : null}
       </View>
+      </View>
+      {counting ? (
+        <View pointerEvents="none" style={styles.countdown}>
+          <Text style={[styles.countdownNum, { fontSize: Math.min(168, Math.round(width * 0.42)) }]}>{playback.countdown}</Text>
+        </View>
+      ) : null}
       {panel && !dockPanel ? (
-        <View style={[styles.overlay, { top: insets.top + 56 }]}>
+        <View style={styles.overlay}>
           <Pressable style={styles.dismiss} onPress={() => setPanel(false)} />
           <View style={styles.sheet}>{panelNode}</View>
         </View>
@@ -365,21 +396,49 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: light.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: light.bg, padding: 24, gap: 12 },
-  header: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingBottom: 8 },
+  header: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: light.bg, zIndex: 8, elevation: 8 },
   headerTitle: { fontFamily: fonts.bold, color: light.ink, fontSize: 16 },
   headerSub: { fontFamily: fonts.medium, color: light.muted, fontSize: 12 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e7e0d2", alignItems: "center", justifyContent: "center" },
   iconText: { fontFamily: fonts.bold, fontSize: 20, color: light.ink, marginTop: -2 },
-  score: { flex: 1 },
-  seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: light.bg },
-  play: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" },
-  playOn: { backgroundColor: "#0f172a" },
-  playText: { fontFamily: fonts.bold, color: "#fff", fontSize: 14 },
+  stage: { flex: 1, overflow: "hidden" },
+  score: { flex: 1, zIndex: 1 },
+  scoreParked: { position: "absolute", width: "100%", height: 1, opacity: 0, overflow: "hidden", zIndex: 0 },
+  seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: light.bg, zIndex: 6, elevation: 6 },
+  play: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" },
+  playMark: {
+    width: 0,
+    height: 0,
+    marginLeft: 3,
+    borderTopWidth: 7,
+    borderBottomWidth: 7,
+    borderLeftWidth: 12,
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    borderLeftColor: "#fff",
+  },
+  pauseMark: { flexDirection: "row", alignItems: "center", gap: 4 },
+  pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: "#fff" },
+  countdown: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+    backgroundColor: "rgba(0,0,0,0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countdownNum: {
+    fontFamily: fonts.bold,
+    color: "#ff7a18",
+    textShadowColor: "rgba(255,122,24,0.7)",
+    textShadowRadius: 28,
+    textShadowOffset: { width: 0, height: 0 },
+  },
   time: { fontFamily: fonts.medium, color: light.muted, fontSize: 12, width: 36 },
   pdfError: { fontFamily: fonts.medium, color: "#be123c", paddingHorizontal: 12, paddingBottom: 4 },
   ended: { fontFamily: fonts.bold, color: light.sky, textAlign: "center", paddingBottom: 4 },
-  overlay: { ...StyleSheet.absoluteFillObject, flexDirection: "row" },
-  dismiss: { flex: 1, backgroundColor: "rgba(15,23,42,0.28)" },
+  overlay: { ...StyleSheet.absoluteFillObject, flexDirection: "row", zIndex: 40, elevation: 40 },
+  dismiss: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { width: "86%", maxWidth: 420, backgroundColor: light.bg },
   error: { fontFamily: fonts.medium, color: light.ink, textAlign: "center" },
   backBtn: { backgroundColor: light.ink, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 8 },
