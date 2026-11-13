@@ -29,11 +29,11 @@ All of these are public `EXPO_PUBLIC_` values. See `.env.example`.
 | `EXPO_PUBLIC_ASSET_BASE_URL` | CDN used when MusicXML, MIDI, or MP3 paths are relative. |
 | `EXPO_PUBLIC_REVENUECAT_IOS_KEY` | RevenueCat public iOS SDK key. |
 | `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | RevenueCat public Android SDK key. |
-| `EXPO_PUBLIC_REVENUECAT_ENTITLEMENT` | Entitlement unlocked by the purchase. Default `play_piano_academy_pro`. |
-| `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` | Offering that contains the package. Blank uses the current offering. |
-| `EXPO_PUBLIC_REVENUECAT_PRODUCT_ID` | Non-consumable product id. Default `play_piano_academy_pro`. |
+| `EXPO_PUBLIC_REVENUECAT_ENTITLEMENT` | Entitlement unlocked by the purchase. Default `d8r_piano_academy_pro`. |
+| `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` | Offering whose Lifetime package is purchased. Blank uses the current offering. |
+| `EXPO_PUBLIC_REVENUECAT_PRODUCT_ID` | One-time store product bought when that offering has no Lifetime package. Default `d8r_piano_academy_pro`. |
 
-Create the non-consumable `play_piano_academy_pro` in App Store Connect and attach it in RevenueCat to the entitlement and an offering. There is no monthly or yearly subscription.
+The paywall buys the Lifetime package on the current RevenueCat offering, or on `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` when that is set. If the offering or the Lifetime package is missing, it purchases the store product `d8r_piano_academy_pro` directly. That product is a non-consumable on the App Store and a one-time product on Google Play. RevenueCat attaches it to the `d8r_piano_academy_pro` entitlement. The paywall shows that package's store price. There is no monthly or yearly subscription.
 
 In a dev build with empty RevenueCat keys, the paywall's unlock button marks the session as Pro so the 20-second gate can be tried. That shortcut does not exist in release builds, and the PDF endpoint still checks the real RevenueCat user.
 
@@ -57,7 +57,7 @@ The app calls these routes on `EXPO_PUBLIC_API_BASE_URL`. The contract is `docs/
 - `GET /api/mobile/academy-studio/pieces/{id-or-slug}`
 - `GET /api/mobile/academy-studio/pieces/{id}/pdf`
 
-The PDF route is sent with `X-RevenueCat-App-User-Id` set to `Purchases.getAppUserID()`. Premium PDFs are rejected without a user who owns the entitlement. A JSON body `{ "url": "..." }` is followed; a PDF body is saved as-is.
+The PDF route is sent with `X-RevenueCat-App-User-Id` set to `Purchases.getAppUserID()`. Premium PDFs are rejected without a user who owns the `d8r_piano_academy_pro` entitlement. A JSON body `{ "url": "..." }` is followed; a PDF body is saved as-is.
 
 Relative `musicXmlUrl`, `midiUrl`, `pdfUrl`, and MP3 `url` values are resolved against `EXPO_PUBLIC_ASSET_BASE_URL`.
 
@@ -139,7 +139,7 @@ npx expo-doctor
 
 ## What the owner still has to configure
 
-- App Store Connect product `play_piano_academy_pro` (non-consumable) and the matching RevenueCat entitlement, offering, and SDK keys.
+- Store product `d8r_piano_academy_pro` (non-consumable on the App Store, one-time product on Google Play), the RevenueCat entitlement `d8r_piano_academy_pro`, a Lifetime package on the current offering, and the SDK keys.
 - `eas init` on the `danijelbrecelj` account, then a production iOS build.
 - Replace `assets/icon.png`, `assets/adaptive-icon.png`, and `assets/splash-icon.png` with the three icons from the current App Store app if these stand-ins should not ship. The private keyboard-scores repo was not readable from this environment, so those files could not be copied.
 - Merge and deploy website PR 4 so the hosted embed and `/api/mobile/academy-studio/*` are live. Until then the app uses the bundled score view whenever a MusicXML file is already cached, and the library shows that the API is not deployed.
