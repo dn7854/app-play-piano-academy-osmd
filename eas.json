@@ -6,13 +6,25 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT": "d8r_piano_academy_pro",
+        "EXPO_PUBLIC_REVENUECAT_PRODUCT_ID": "d8r_piano_academy_pro"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT": "d8r_piano_academy_pro",
+        "EXPO_PUBLIC_REVENUECAT_PRODUCT_ID": "d8r_piano_academy_pro"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT": "d8r_piano_academy_pro",
+        "EXPO_PUBLIC_REVENUECAT_PRODUCT_ID": "d8r_piano_academy_pro"
+      }
     }
   },
   "submit": {

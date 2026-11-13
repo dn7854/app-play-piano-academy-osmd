@@ -33,7 +33,7 @@ All of these are public `EXPO_PUBLIC_` values. See `.env.example`.
 | `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` | Offering whose Lifetime package is purchased. Blank uses the current offering. |
 | `EXPO_PUBLIC_REVENUECAT_PRODUCT_ID` | One-time store product bought when that offering has no Lifetime package. Default `d8r_piano_academy_pro`. |
 
-The paywall buys the Lifetime package on the current RevenueCat offering, or on `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` when that is set. If the offering or the Lifetime package is missing, it purchases the store product `d8r_piano_academy_pro` directly. That product is a non-consumable on the App Store and a one-time product on Google Play. RevenueCat attaches it to the `d8r_piano_academy_pro` entitlement. The paywall shows that package's store price. There is no monthly or yearly subscription.
+`.env.example` and every `eas.json` build profile set `EXPO_PUBLIC_REVENUECAT_ENTITLEMENT` and `EXPO_PUBLIC_REVENUECAT_PRODUCT_ID` to `d8r_piano_academy_pro`. The paywall buys the Lifetime package on the current RevenueCat offering, or on `EXPO_PUBLIC_REVENUECAT_OFFERING_ID` when that is set. If the offering or the Lifetime package is missing, it purchases the store product `d8r_piano_academy_pro` directly. That product is a non-consumable on the App Store and a one-time product on Google Play. RevenueCat attaches it to the `d8r_piano_academy_pro` entitlement. The paywall shows that package's store price. There is no monthly or yearly subscription.
 
 In a dev build with empty RevenueCat keys, the paywall's unlock button marks the session as Pro so the 20-second gate can be tried. That shortcut does not exist in release builds, and the PDF endpoint still checks the real RevenueCat user.
 
