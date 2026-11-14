@@ -1,8 +1,14 @@
+import { clickWavBytes, renderClick } from "../audio/pianoClick";
 import { ApiError, flowEndpointMissing, normalizeFlow } from "../api/client";
+import { resolveBackingIndex } from "./backing";
+import { pieceCoverUrl } from "./covers";
+import { pageContainScale, LANDSCAPE_SCORE_ZOOM, PORTRAIT_SCORE_ZOOM } from "./embedScale";
 import { parseMidi } from "./midi";
-import { notesFromEmbed, osmdHalfToneToMidi, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
-import { pageContainScale } from "./embedScale";
 import { matchAnyExpected, openingAnchor, waitingNotes } from "./notes";
+import { notesFromEmbed, osmdHalfToneToMidi, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
+import { SUCCESS_GAP_MS, SUCCESS_PHRASES } from "./praise";
+import { LEFT_HAND_COLOR, RIGHT_HAND_COLOR, paintHands, performanceColor, trackColor } from "./trackColors";
+import { waterfallBar, waterfallHitY } from "./waterfall";
 import { clampTempo, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
 import { sessionAttempts } from "../audio/sessionProfile";
@@ -32,6 +38,7 @@ assert(parsed.notes.length === 1, "midi note count");
 assert(Math.abs(parsed.notes[0].time) < 0.02, "midi start");
 assert(Math.abs(parsed.notes[0].duration - 0.5) < 0.05, `midi duration ${parsed.notes[0].duration}`);
 assert(parsed.notes[0].note === 60, "midi pitch");
+assert(parsed.notes[0].channel === 0 && parsed.notes[0].track === 0, "midi channel");
 
 assert(Math.abs(wholeToSeconds(1, 60) - 4) < 1e-9, "whole note at 60");
 assert(Math.abs(wholeToSeconds(0.25, 50) - 1.2) < 1e-9, "quarter at 50");
@@ -76,6 +83,7 @@ if (loaded?.kind === "loaded") {
   assert(matchAnyExpected(329.6, [60, 64]) === 64, "any note of the chord");
   assert(flat[2].time === 1, "next step time");
   assert(flat[0].note === 60 && flat[2].note === 67, "osmd halfTone becomes midi");
+  assert(flat[0].staff === 1, "staff is kept for hand color");
   assert(openingAnchor(flat) === 64, "opening anchor is the highest note of the first chord");
 }
 
@@ -141,6 +149,7 @@ const flow = normalizeFlow({
             tempo: 108,
             timeSignature: "3/4",
             imageUrl: null,
+            pdfThumbnailUrl: "/thumbs/minuet.jpg",
             isPremium: false,
             hasPdf: false,
           },
@@ -165,6 +174,7 @@ const flow = normalizeFlow({
             tempo: "120",
             timeSignature: "3/8",
             imageUrl: "/covers/elise.jpg",
+            pdfThumbnailUrl: "https://cdn.example/elise-p1.jpg",
             isPremium: true,
             hasPdf: true,
           },
@@ -180,6 +190,7 @@ const flow = normalizeFlow({
             composer: null,
             difficulty: null,
             imageUrl: "https://cdn.example/ode.jpg",
+            pdfThumbnailUrl: "https://cdn.example/ode-p1.jpg",
             isPremium: "true",
           },
         },
@@ -193,6 +204,15 @@ assert(flow[0].tiles.map((tile) => tile.id).join() === "placement-early,placemen
 assert(flow[0].tiles[0].id !== flow[0].tiles[0].piece.id, "tile id is the placement");
 assert(flow[0].tiles[0].piece.imageUrl === "https://cdn.example/ode.jpg", "absolute cover kept");
 assert(flow[0].tiles[1].piece.imageUrl === null, "relative cover dropped");
+assert(flow[0].tiles[1].piece.pdfThumbnailUrl === "https://cdn.example/elise-p1.jpg", "pdf thumbnail kept");
+assert(flow[1].tiles[0].piece.pdfThumbnailUrl === null, "relative pdf thumbnail dropped");
+assert(pieceCoverUrl(flow[0].tiles[0].piece) === "https://cdn.example/ode.jpg", "cover prefers imageUrl");
+assert(pieceCoverUrl(flow[0].tiles[1].piece) === "https://cdn.example/elise-p1.jpg", "cover uses the pdf thumbnail");
+assert(
+  pieceCoverUrl(flow[0].tiles[0].piece, "https://cdn.example/ode.jpg") === "https://cdn.example/ode-p1.jpg",
+  "failed cover falls through",
+);
+assert(pieceCoverUrl({ imageUrl: null, pdfThumbnailUrl: null }) === null, "cover placeholder");
 assert(flow[0].tiles[1].piece.difficulty === null, "unknown difficulty");
 assert(flow[0].tiles[1].piece.isPremium === true, "premium flag");
 assert(flow[0].tiles[1].piece.tempo === 120, "tempo number");
@@ -202,5 +222,48 @@ assert(flowEndpointMissing(new ApiError("missing", 404, "http")), "404 hides flo
 assert(flowEndpointMissing(new ApiError("signin", 302, "unavailable")), "signin hides flow");
 assert(!flowEndpointMissing(new ApiError("down", 500, "http")), "500 keeps flow");
 assert(!flowEndpointMissing(new ApiError("offline", null, "network")), "network is not a missing route");
+
+assert(PORTRAIT_SCORE_ZOOM === 1, "portrait zoom stays fitted");
+assert(LANDSCAPE_SCORE_ZOOM === 1.85, "landscape zoom fills the width");
+assert(RIGHT_HAND_COLOR === "#38bdf8" && trackColor(0) === RIGHT_HAND_COLOR, "right hand is sky");
+assert(LEFT_HAND_COLOR === "#6366f1" && trackColor(1) === LEFT_HAND_COLOR, "left hand is indigo");
+assert(performanceColor({ channel: 0 }) === RIGHT_HAND_COLOR, "channel 0 is the right hand");
+assert(performanceColor({ channel: 1 }) === LEFT_HAND_COLOR, "channel 1 is the left hand");
+assert(performanceColor({ staff: 2 }) === LEFT_HAND_COLOR, "lower staff is the left hand");
+assert(performanceColor({ channel: 0, track: 1 }) === LEFT_HAND_COLOR, "track color wins, matching the website");
+assert(trackColor(2) === "#34d399", "later tracks keep the website palette");
+const painted = paintHands(
+  [{ time: 0, duration: 1, note: 60, staff: 1 }],
+  [{ time: 0.02, duration: 0.4, note: 60, channel: 1, track: 1 }],
+);
+assert(painted[0].channel === 1 && performanceColor(painted[0]) === LEFT_HAND_COLOR, "midi hand paints the score note");
+
+assert(resolveBackingIndex([], null) === -1, "no tracks stays empty");
+assert(resolveBackingIndex(["Piano grand"], null) === 0, "a piano track is selected");
+assert(resolveBackingIndex(["Piano grand"], "none") === 0, "saved none falls back to a track");
+assert(resolveBackingIndex(["Piano", "Orchestra"], null) === 1, "a non-piano track wins");
+assert(resolveBackingIndex(["Orchestra", "Piano"], "Piano") === 1, "saved label wins");
+assert(resolveBackingIndex(["Piano grand"], "Orchestra") === 0, "unknown label falls back");
+
+const hit = waterfallHitY(200);
+const crossed = waterfallBar({ time: 0.5, duration: 1 }, 1, 200, 100, hit);
+assert(crossed != null && crossed.top + crossed.height === hit, "a late note ends on the saber");
+const early = waterfallBar({ time: 1.5, duration: 0.2 }, 1, 200, 100, hit);
+assert(early != null && early.top + early.height < hit, "an approaching note stays above the saber");
+
+assert(SUCCESS_GAP_MS === 800, "success phrase matches the website gap");
+assert(SUCCESS_PHRASES.length === 5, "success phrases");
+const accent = renderClick(8000, "accent");
+const beat = renderClick(8000, "beat");
+assert(accent.length > beat.length, "accent click is longer");
+assert(accent[0] === 0 && beat[0] === 0, "clicks fade in");
+let accentPeak = 0;
+let beatPeak = 0;
+for (const sample of accent) accentPeak = Math.max(accentPeak, Math.abs(sample));
+for (const sample of beat) beatPeak = Math.max(beatPeak, Math.abs(sample));
+assert(accentPeak <= 1 && beatPeak <= 1 && accentPeak > beatPeak, "accent is louder and stays in range");
+const wav = clickWavBytes(beat, 8000);
+assert(String.fromCharCode(wav[0], wav[1], wav[2], wav[3]) === "RIFF", "count-in wav");
+assert(wav.length === 44 + beat.length * 2, "count-in wav length");
 
 console.log("selfcheck ok");

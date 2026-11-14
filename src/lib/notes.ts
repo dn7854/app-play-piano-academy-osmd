@@ -3,6 +3,12 @@ export type TimedNote = {
   duration: number;
   note: number;
   measure?: number;
+  /** MIDI track index, when the note came from a file or was matched to one. */
+  track?: number;
+  /** MIDI channel. 0 is the right hand and 1 is the left hand, as on the website. */
+  channel?: number;
+  /** OSMD staff. 1 is the upper staff, 2 and above are the lower staff. */
+  staff?: number;
 };
 
 /** The chord the player must hit: every note that starts together. Any one of them advances. */

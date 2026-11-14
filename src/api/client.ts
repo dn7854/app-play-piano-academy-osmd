@@ -100,6 +100,7 @@ export function normalizeSummary(raw: unknown): PieceSummary | null {
     tempo: num(row.tempo) ?? 120,
     timeSignature: str(row.timeSignature) ?? "4/4",
     imageUrl: absolute(row.imageUrl),
+    pdfThumbnailUrl: absolute(row.pdfThumbnailUrl),
     isPremium: flag(row.isPremium),
     hasPdf: flag(row.hasPdf),
     position: num(row.position) ?? undefined,

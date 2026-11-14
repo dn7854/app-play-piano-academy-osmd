@@ -13,6 +13,7 @@ import {
   normalizeFlow,
 } from "../api/client";
 import type { CollectionDetail, CollectionSummary, FlowSection, PieceSummary } from "../api/types";
+import { pieceCoverUrl } from "../lib/covers";
 import { dark, fonts } from "../theme";
 import { FlowView } from "./FlowView";
 
@@ -20,13 +21,13 @@ function openPiece(piece: PieceSummary, collection?: string) {
   router.push({ pathname: "/piece/[id]", params: { id: piece.slug || piece.id, collection: collection ?? "" } });
 }
 
-function CoverThumb({ uri }: { uri: string | null }) {
-  const [failedUri, setFailedUri] = useState<string | null>(null);
-  const show = Boolean(uri) && failedUri !== uri;
+function CoverThumb({ imageUrl, pdfThumbnailUrl }: { imageUrl?: string | null; pdfThumbnailUrl?: string | null }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const uri = pieceCoverUrl({ imageUrl, pdfThumbnailUrl }, failed);
   return (
     <View style={styles.thumb}>
-      {show && uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailedUri(uri)} />
+      {uri ? (
+        <Image key={uri} source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailed(uri)} />
       ) : (
         <Text style={styles.thumbMark}>♪</Text>
       )}
@@ -40,18 +41,20 @@ function Card({
   meta,
   premium,
   imageUrl,
+  pdfThumbnailUrl,
   onPress,
 }: {
   title: string;
   subtitle: string;
   meta?: string;
   premium?: boolean;
-  imageUrl: string | null;
+  imageUrl?: string | null;
+  pdfThumbnailUrl?: string | null;
   onPress: () => void;
 }) {
   return (
     <Pressable onPress={onPress} style={styles.card}>
-      <CoverThumb uri={imageUrl} />
+      <CoverThumb imageUrl={imageUrl} pdfThumbnailUrl={pdfThumbnailUrl} />
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{title}</Text>
         <Text style={styles.cardSub}>{subtitle}</Text>
@@ -272,6 +275,7 @@ export function LibraryScreen({ slug }: { slug?: string }) {
                 meta={piece.difficulty || undefined}
                 premium={piece.isPremium}
                 imageUrl={piece.imageUrl}
+                pdfThumbnailUrl={piece.pdfThumbnailUrl}
                 onPress={() => openPiece(piece, slug)}
               />
             ))}

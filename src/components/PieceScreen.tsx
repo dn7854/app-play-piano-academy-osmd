@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
@@ -17,6 +18,9 @@ import { useMidiController } from "../hooks/useMidiController";
 import { recordDiagnostic } from "../lib/diagnostics";
 import { notesFromEmbed, type EmbedLayoutName, type LoadedScore } from "../lib/protocol";
 import { matchAnyExpected, type TimedNote } from "../lib/notes";
+import { BACKING_TRACK_KEY, resolveBackingIndex } from "../lib/backing";
+import { LANDSCAPE_SCORE_ZOOM, PORTRAIT_SCORE_ZOOM } from "../lib/embedScale";
+import { paintHands } from "../lib/trackColors";
 import { clampTempo } from "../lib/tempo";
 import { usePlayback } from "../playback/usePlayback";
 import { usePitch } from "../pitch/usePitch";
@@ -84,7 +88,8 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [panel, setPanel] = useState(false);
   const [playMode, setPlayMode] = useState(true);
   const waitMode = !playMode;
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(landscape ? LANDSCAPE_SCORE_ZOOM : PORTRAIT_SCORE_ZOOM);
+  const zoomTouched = useRef(false);
   const [selectedBpm, setSelectedBpm] = useState(120);
   const [backingIndex, setBackingIndex] = useState(-1);
   const [tempoOpen, setTempoOpen] = useState(false);
@@ -101,6 +106,11 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [sensitivity, setSensitivity] = usePitchSensitivity(tablet);
 
   useEffect(() => {
+    if (zoomTouched.current) return;
+    setZoom(landscape ? LANDSCAPE_SCORE_ZOOM : PORTRAIT_SCORE_ZOOM);
+  }, [landscape]);
+
+  useEffect(() => {
     let cancel = false;
     void (async () => {
       setLoading(true);
@@ -112,10 +122,11 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       try {
         const detail = await fetchPiece(id);
         if (cancel) return;
+        const savedBacking = await AsyncStorage.getItem(BACKING_TRACK_KEY).catch(() => null);
+        if (cancel) return;
         setPiece(detail);
         setSelectedBpm(detail.tempo || 120);
-        const orchestra = groupBacking(detail.mp3Files).findIndex((group) => !/piano/i.test(group.label));
-        setBackingIndex(orchestra);
+        setBackingIndex(resolveBackingIndex(groupBacking(detail.mp3Files).map((group) => group.label), savedBacking));
         const files = await cachePiece(detail);
         if (!cancel) setCached(files);
         if (collection) {
@@ -127,9 +138,14 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       } catch (err) {
         const saved = await readPieceMeta(id);
         if (saved && !cancel) {
+          const savedBacking = await AsyncStorage.getItem(BACKING_TRACK_KEY).catch(() => null);
+          if (cancel) return;
           setPiece(saved);
           setSelectedBpm(saved.tempo || 120);
-          setCached(await cachePiece(saved));
+          setBackingIndex(resolveBackingIndex(groupBacking(saved.mp3Files).map((group) => group.label), savedBacking));
+          const files = await cachePiece(saved);
+          if (cancel) return;
+          setCached(files);
           setOffline(true);
         } else if (!cancel) {
           setError(err instanceof ApiError ? err.message : "This score could not be opened.");
@@ -151,6 +167,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
     cached?.midiDuration ?? 0,
   );
   const groups = useMemo(() => groupBacking(piece?.mp3Files ?? []), [piece]);
+  const coloredNotes = useMemo(() => paintHands(notes, cached?.midiNotes ?? []), [notes, cached?.midiNotes]);
   const chosen = pickBacking(groups[backingIndex], clampTempo(pieceBpm, selectedBpm));
   const cachedTrack = chosen ? cached?.mp3.find((file) => file.remoteUrl === chosen.url) : null;
   const backing = chosen ? { uri: cachedTrack?.localUri || chosen.url, bpm: chosen.bpm } : null;
@@ -173,20 +190,22 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const onNoteRef = useRef(playback.onNote);
   onNoteRef.current = playback.onNote;
   const onMidi = useCallback((event: { type: string; noteNumber: number }) => {
-    if (event.type === "note-on") onNoteRef.current(event.noteNumber, "midi");
+    if (event.type === "note-on") onNoteRef.current(event.noteNumber, "midi", "on");
+    else if (event.type === "note-off") onNoteRef.current(event.noteNumber, "midi", "off");
   }, []);
   const midi = useMidiController(midiEnabled, onMidi);
   const micAt = useRef(0);
 
   useEffect(() => {
-    if (!micOn || !waitMode || !playback.playing) return;
-    const hit = matchAnyExpected(pitch.liveHz, playback.waiting);
+    if (!micOn || !playback.playing) return;
+    const expected = waitMode ? playback.waiting : playback.active;
+    const hit = matchAnyExpected(pitch.liveHz, expected);
     if (hit == null) return;
     const now = Date.now();
     if (now - micAt.current < 450) return;
     micAt.current = now;
     onNoteRef.current(hit, "mic");
-  }, [micOn, pitch.liveHz, playback.playing, playback.waiting, waitMode]);
+  }, [micOn, pitch.liveHz, playback.active, playback.playing, playback.waiting, waitMode]);
 
   useEffect(() => {
     if (!micOn) void setAudioSession("playback");
@@ -269,9 +288,16 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       others={others}
       onPlayMode={() => setPlayMode(true)}
       onWait={() => setPlayMode(false)}
-      onZoom={setZoom}
+      onZoom={(value) => {
+        zoomTouched.current = true;
+        setZoom(value);
+      }}
       onTempo={() => setTempoOpen(true)}
-      onBacking={setBackingIndex}
+      onBacking={(index) => {
+        setBackingIndex(index);
+        const label = index >= 0 ? groups[index]?.label ?? "none" : "none";
+        void AsyncStorage.setItem(BACKING_TRACK_KEY, label).catch(() => undefined);
+      }}
       onMic={() => acoustic.setValue(!acoustic.value)}
       onSensitivity={setSensitivity}
       onMidi={() => midiToggle.setValue(!midiToggle.value)}
@@ -352,9 +378,14 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
           </View>
           {pdfError ? <Text style={styles.pdfError}>{pdfError}</Text> : null}
           {playback.ended ? <Text style={styles.ended}>End of the piece</Text> : null}
+          {playback.successText ? (
+            <View pointerEvents="none" style={styles.praise}>
+              <Text style={styles.praiseText}>{playback.successText}</Text>
+            </View>
+          ) : null}
           {showsKeyboard(viewMode) ? (
             <KeyboardDock
-              notes={notes}
+              notes={coloredNotes}
               scoreTime={playback.scoreTime}
               active={playback.active}
               waiting={playback.waiting}
@@ -434,17 +465,33 @@ const styles = StyleSheet.create({
   countdown: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,
-    elevation: 20,
-    backgroundColor: "rgba(0,0,0,0.78)",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
   countdownNum: {
     fontFamily: fonts.bold,
     color: "#ff7a18",
-    textShadowColor: "rgba(255,122,24,0.7)",
-    textShadowRadius: 28,
-    textShadowOffset: { width: 0, height: 0 },
+    backgroundColor: "transparent",
+    textAlign: "center",
+  },
+  praise: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    top: "36%",
+    alignItems: "center",
+    zIndex: 16,
+    backgroundColor: "transparent",
+  },
+  praiseText: {
+    fontFamily: fonts.bold,
+    color: "#10b981",
+    fontSize: 32,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    textAlign: "center",
+    backgroundColor: "transparent",
   },
   time: { fontFamily: fonts.medium, color: light.muted, fontSize: 12, width: 36 },
   pdfError: { fontFamily: fonts.medium, color: "#be123c", paddingHorizontal: 12, paddingBottom: 4 },

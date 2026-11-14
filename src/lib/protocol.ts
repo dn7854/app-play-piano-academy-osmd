@@ -173,6 +173,7 @@ export function notesFromEmbed(notes: EmbedNote[]): TimedNote[] {
         duration,
         note: osmdHalfToneToMidi(pitch.midi),
         measure: step.measureIndex,
+        staff: pitch.staff,
       });
     }
   });

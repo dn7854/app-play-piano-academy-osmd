@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
@@ -154,6 +154,11 @@ export function SidePanel({
   onClose?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const [zoomShown, setZoomShown] = useState(zoom);
+  const zoomSliding = useRef(false);
+  useEffect(() => {
+    if (!zoomSliding.current) setZoomShown(zoom);
+  }, [zoom]);
   return (
     <View style={styles.panel}>
       <View style={[styles.head, { paddingTop: insets.top }]}>
@@ -186,17 +191,25 @@ export function SidePanel({
         <View style={styles.sliderBlock}>
           <View style={styles.sliderHead}>
             <Text style={styles.section}>Score zoom</Text>
-            <Text style={styles.rowValue}>{Math.round(zoom * 100)}%</Text>
+            <Text style={styles.rowValue}>{Math.round(zoomShown * 100)}%</Text>
           </View>
           <Slider
             minimumValue={0.5}
             maximumValue={3}
             step={0.05}
-            value={zoom}
+            value={zoomShown}
             minimumTrackTintColor="#0284c7"
             maximumTrackTintColor="#e2e8f0"
             thumbTintColor="#0284c7"
-            onSlidingComplete={onZoom}
+            onSlidingStart={() => {
+              zoomSliding.current = true;
+            }}
+            onValueChange={setZoomShown}
+            onSlidingComplete={(value) => {
+              zoomSliding.current = false;
+              setZoomShown(value);
+              onZoom(value);
+            }}
           />
         </View>
         <Pressable style={styles.row} onPress={onTempo}>
