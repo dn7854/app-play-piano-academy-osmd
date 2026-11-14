@@ -18,7 +18,7 @@ type Snap = {
   success: number[];
   wrong: number[];
   ended: boolean;
-  praise: string | null;
+  correctHits: number;
 };
 
 function quietly(label: string, action: () => void | Promise<unknown>) {
@@ -43,10 +43,8 @@ const empty: Snap = {
   success: [],
   wrong: [],
   ended: false,
-  praise: null,
+  correctHits: 0,
 };
-
-const PRAISE = ["Perfect!", "On Beat!", "Excellent!", "Bravo!", "Spot on!"];
 
 export function usePlayback({
   notes,
@@ -97,8 +95,7 @@ export function usePlayback({
   const playerRef = useRef<AudioPlayer | null>(null);
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const frame = useRef(0);
-  const hitCount = useRef(0);
-  const praiseTarget = useRef(3 + Math.floor(Math.random() * 3));
+  const correctRef = useRef(0);
 
   const player = useCallback(() => {
     if (playerRef.current) return playerRef.current;
@@ -215,6 +212,7 @@ export function usePlayback({
     (fromStart: boolean) => {
       for (const id of timers.current) clearTimeout(id);
       timers.current = [];
+      if (fromStart) correctRef.current = 0;
       if (!fromStart) {
         recordDiagnostic("play", `resume t=${scoreRef.current.toFixed(2)}`);
         arm(scoreRef.current);
@@ -260,22 +258,16 @@ export function usePlayback({
         publish({ success: [], wrong: [] }, true);
         return;
       }
-      // Play mode: a correctly pressed note turns green and earns praise every few hits.
+      // Play mode: a correctly pressed note turns green; hits are tallied for the end card.
       if (!live.current.waitMode) {
         const sounding = soundingNotes(notesRef.current, scoreRef.current);
         if (!sounding.includes(midi)) {
           publish({ success: [], wrong: [] }, true);
           return;
         }
-        publish({ success: [midi], wrong: [] }, true);
+        correctRef.current += 1;
+        publish({ success: [midi], wrong: [], correctHits: correctRef.current }, true);
         timers.current.push(setTimeout(() => publish({ success: [] }, true), 420));
-        hitCount.current += 1;
-        if (hitCount.current >= praiseTarget.current) {
-          hitCount.current = 0;
-          praiseTarget.current = 3 + Math.floor(Math.random() * 3);
-          publish({ praise: PRAISE[Math.floor(Math.random() * PRAISE.length)] }, true);
-          timers.current.push(setTimeout(() => publish({ praise: null }, true), 1200));
-        }
         return;
       }
       const expected = waitingNotes(notesRef.current, scoreRef.current);
@@ -287,7 +279,8 @@ export function usePlayback({
       if (now - advanceLock.current < 280) return;
       advanceLock.current = now;
       const next = nextEventTime(notesRef.current, scoreRef.current, live.current.duration);
-      publish({ success: [midi], wrong: [] }, true);
+      correctRef.current += 1;
+      publish({ success: [midi], wrong: [], correctHits: correctRef.current }, true);
       timers.current.push(setTimeout(() => publish({ success: [] }, true), 420));
       if (next >= live.current.duration - 0.05) {
         scoreRef.current = live.current.duration;

@@ -56,7 +56,7 @@ export default function Settings() {
         <Text style={styles.section}>Links</Text>
         <Pressable style={styles.row} onPress={() => void open("https://danijelbrecelj.com")}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel}>Discover other apps</Text>
+            <Text style={styles.rowLabel}>About developer</Text>
             <Text style={styles.rowHelp}>danijelbrecelj.com</Text>
           </View>
           <Text style={styles.chevron}>›</Text>

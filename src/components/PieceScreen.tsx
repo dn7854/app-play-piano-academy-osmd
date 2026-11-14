@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
@@ -16,7 +16,7 @@ import { TempoModal } from "./TempoModal";
 import { useMidiController } from "../hooks/useMidiController";
 import { recordDiagnostic } from "../lib/diagnostics";
 import { notesFromEmbed, type EmbedLayoutName, type LoadedScore } from "../lib/protocol";
-import { matchAnyExpected, type TimedNote } from "../lib/notes";
+import { matchAnyExpected, soundingNotes, type TimedNote } from "../lib/notes";
 import { clampTempo } from "../lib/tempo";
 import { usePlayback } from "../playback/usePlayback";
 import { usePitch } from "../pitch/usePitch";
@@ -89,6 +89,10 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   useEffect(() => {
     setZoom(landscape ? 1.85 : 1);
   }, [landscape]);
+
+  const [showRight, setShowRight] = useState(true);
+  const [showLeft, setShowLeft] = useState(true);
+  const [resultOpen, setResultOpen] = useState(false);
   const [selectedBpm, setSelectedBpm] = useState(120);
   const [backingIndex, setBackingIndex] = useState(-1);
   const [tempoOpen, setTempoOpen] = useState(false);
@@ -172,6 +176,23 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
     gated,
     onPaywall: () => setPaywall(true),
   });
+
+  const midiNotes = cached?.midiNotes ?? [];
+  const visibleNotes = useMemo<TimedNote[]>(() => {
+    if (!midiNotes.length) return notes;
+    return midiNotes
+      .filter((node) => (node.track === 0 ? showRight : node.track === 1 ? showLeft : false))
+      .map((node) => ({ time: node.time, duration: node.duration, note: node.note }));
+  }, [midiNotes, notes, showLeft, showRight]);
+  const visibleActive = useMemo(
+    () => (playMode ? soundingNotes(visibleNotes, playback.scoreTime) : []),
+    [playMode, visibleNotes, playback.scoreTime],
+  );
+  const visibleWaiting = playback.waiting.filter((midiNo) => visibleNotes.some((node) => node.note === midiNo));
+
+  useEffect(() => {
+    if (playback.ended) setResultOpen(true);
+  }, [playback.ended]);
 
   const pitch = usePitch(micOn, sensitivity);
   const onNoteRef = useRef(playback.onNote);
@@ -270,14 +291,24 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       midiName={midi.isConnected ? midi.deviceName : null}
       pdfEnabled={piece.pdf.available}
       pro={pro}
+      showRight={showRight}
+      showLeft={showLeft}
       others={others}
-      onPlayMode={() => setPlayMode(true)}
-      onWait={() => setPlayMode(false)}
+      onPlayMode={() => {
+        playback.stop();
+        setPlayMode(true);
+      }}
+      onWait={() => {
+        playback.stop();
+        setPlayMode(false);
+      }}
       onZoom={setZoom}
       onTempo={() => setTempoOpen(true)}
       onBacking={setBackingIndex}
       onMic={() => acoustic.setValue(!acoustic.value)}
       onSensitivity={setSensitivity}
+      onRight={() => setShowRight((value) => !value)}
+      onLeft={() => setShowLeft((value) => !value)}
       onMidi={() => midiToggle.setValue(!midiToggle.value)}
       onPdf={() => void onPdf()}
       onPiece={(next) => router.replace({ pathname: "/piece/[id]", params: { id: next.slug || next.id, collection: collection ?? "" } })}
@@ -355,20 +386,18 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             <Text style={styles.time}>{formatTime(duration)}</Text>
           </View>
           {pdfError ? <Text style={styles.pdfError}>{pdfError}</Text> : null}
-          {playback.ended ? <Text style={styles.ended}>End of the piece</Text> : null}
           {showsKeyboard(viewMode) ? (
             <KeyboardDock
-              notes={notes}
+              notes={visibleNotes}
               scoreTime={playback.scoreTime}
-              active={playback.active}
-              waiting={playback.waiting}
+              active={visibleActive}
+              waiting={visibleWaiting}
               success={playback.success}
               wrong={playback.wrong}
               tablet={tablet}
               landscape={landscape}
               waterfall={!showsScore(viewMode)}
               waitMode={waitMode}
-              praise={playback.praise}
               onKey={(note) => playback.onNote(note, "key")}
             />
           ) : null}
@@ -386,6 +415,17 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
           <View style={styles.sheet}>{panelNode}</View>
         </View>
       ) : null}
+      <Modal visible={resultOpen} transparent animationType="fade" onRequestClose={() => setResultOpen(false)}>
+        <Pressable style={styles.resultScrim} onPress={() => setResultOpen(false)}>
+          <Pressable style={styles.resultCard} onPress={() => undefined}>
+            <Text style={styles.resultTitle}>Piece complete</Text>
+            <Text style={styles.resultBody}>{playback.correctHits} of {notes.length} notes played correctly</Text>
+            <Pressable style={styles.resultDone} onPress={() => setResultOpen(false)}>
+              <Text style={styles.resultDoneText}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <TempoModal visible={tempoOpen} pieceBpm={pieceBpm} bpm={shownBpm} onChange={setSelectedBpm} onClose={() => setTempoOpen(false)} />
       {paywall ? <Paywall onClose={() => setPaywall(false)} /> : null}
     </View>
@@ -453,7 +493,12 @@ const styles = StyleSheet.create({
   },
   time: { fontFamily: fonts.medium, color: light.muted, fontSize: 12, width: 36 },
   pdfError: { fontFamily: fonts.medium, color: "#be123c", paddingHorizontal: 12, paddingBottom: 4 },
-  ended: { fontFamily: fonts.bold, color: light.sky, textAlign: "center", paddingBottom: 4 },
+  resultScrim: { flex: 1, backgroundColor: "rgba(15,23,42,0.4)", justifyContent: "center", alignItems: "center", padding: 24 },
+  resultCard: { width: "100%", maxWidth: 380, borderRadius: 24, backgroundColor: light.white, padding: 20, gap: 10, alignItems: "center" },
+  resultTitle: { fontFamily: fonts.bold, fontSize: 22, color: light.ink },
+  resultBody: { fontFamily: fonts.regular, fontSize: 15, color: light.muted, textAlign: "center" },
+  resultDone: { marginTop: 8, height: 46, borderRadius: 23, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center", alignSelf: "stretch" },
+  resultDoneText: { fontFamily: fonts.bold, color: "#fff" },
   overlay: { ...StyleSheet.absoluteFillObject, flexDirection: "row", zIndex: 40, elevation: 40 },
   dismiss: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { width: "86%", maxWidth: 420, backgroundColor: light.bg },

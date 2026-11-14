@@ -58,7 +58,6 @@ function Card({
       </View>
       <View style={{ alignItems: "flex-end", gap: 6 }}>
         {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-        {!premium ? <Text style={styles.free}>FREE</Text> : null}
       </View>
     </Pressable>
   );

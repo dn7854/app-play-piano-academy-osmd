@@ -11,29 +11,6 @@ function isBlack(midi: number) {
   return BLACK.has(((midi % 12) + 12) % 12);
 }
 
-/** Gradual fade so falling notes emerge below the seekbar instead of a hard dark banner. */
-function FadeTop({ height, slices = 12 }: { height: number; slices?: number }) {
-  if (height <= 0) return null;
-  const step = height / slices;
-  return (
-    <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height }}>
-      {Array.from({ length: slices }, (_, index) => (
-        <View
-          key={index}
-          style={{
-            position: "absolute",
-            top: index * step,
-            left: 0,
-            right: 0,
-            height: step + 1,
-            backgroundColor: `rgba(0,0,0,${(((index + 1) / slices) * 0.72).toFixed(3)})`,
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
 export function keyboardMetrics(tablet: boolean, landscape: boolean) {
   if (landscape && !tablet) return { white: 32, black: 20, keyH: 100, blackH: 62, fallH: 84 };
   if (tablet) return { white: 42, black: 26, keyH: 156, blackH: 96, fallH: 120 };
@@ -72,7 +49,6 @@ export function KeyboardDock({
   landscape,
   waterfall,
   waitMode,
-  praise,
   onKey,
 }: {
   notes: TimedNote[];
@@ -85,7 +61,6 @@ export function KeyboardDock({
   landscape: boolean;
   waterfall: boolean;
   waitMode: boolean;
-  praise: string | null;
   onKey: (midi: number) => void;
 }) {
   const metrics = keyboardMetrics(tablet, landscape);
@@ -134,7 +109,7 @@ export function KeyboardDock({
     if (isWait) return { backgroundColor: black ? "#059669" : "#34d399", shadowColor: "#34d399" };
     if (isOk) return { backgroundColor: black ? "#10b981" : "#6ee7b7", shadowColor: "#6ee7b7" };
     if (tapped === midi || isBad) return { backgroundColor: black ? "#ea580c" : "#fb923c", shadowColor: "#f97316" };
-    if (isOn) return { backgroundColor: black ? "#38bdf8" : "#7dd3fc", shadowColor: "#38bdf8" };
+    if (isOn) return { backgroundColor: black ? "#4f46e5" : "#818cf8", shadowColor: "#6366f1" };
     return null;
   }
 
@@ -160,33 +135,35 @@ export function KeyboardDock({
       >
         <View style={{ width: layout.width, height: (waterfall ? lane : 0) + metrics.keyH }}>
           {waterfall && (
-            <View style={[styles.fall, { height: lane, width: layout.width }]}>
-              {falling.map((note, index) => {
-                const yStart = lane - SABER - (note.time - scoreTime) * pixelsPerSecond;
-                const height = Math.max(4, note.duration * pixelsPerSecond);
-                const top = yStart - height;
-                const waitingNote = waiting.includes(note.note);
-                const width = isBlack(note.note) ? metrics.black : metrics.white - 4;
-                return (
-                  <View
-                    key={`${note.note}-${note.time}-${index}`}
-                    style={[
-                      styles.beam,
-                      {
-                        left: xOf(layout, note.note, metrics.white, metrics.black) + (isBlack(note.note) ? 0 : 2),
-                        top,
-                        width,
-                        height,
-                        backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(56,189,248,0.92)",
-                        shadowColor: waitingNote ? "#34d399" : "#38bdf8",
-                        borderColor: waitingNote ? "#d1fae5" : "#e0f2fe",
-                      },
-                    ]}
-                  />
-                );
-              })}
-              <FadeTop height={Math.min(72, lane * 0.22)} />
-            </View>
+            <>
+              <View style={[styles.fall, { height: Math.max(0, lane - SABER), width: layout.width }]}>
+                {falling.map((note, index) => {
+                  const yStart = lane - SABER - (note.time - scoreTime) * pixelsPerSecond;
+                  const height = Math.max(4, note.duration * pixelsPerSecond);
+                  const top = yStart - height;
+                  const waitingNote = waiting.includes(note.note);
+                  const width = isBlack(note.note) ? metrics.black : metrics.white - 4;
+                  return (
+                    <View
+                      key={`${note.note}-${note.time}-${index}`}
+                      style={[
+                        styles.beam,
+                        {
+                          left: xOf(layout, note.note, metrics.white, metrics.black) + (isBlack(note.note) ? 0 : 2),
+                          top,
+                          width,
+                          height,
+                          backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(99,102,241,0.92)",
+                          shadowColor: waitingNote ? "#34d399" : "#6366f1",
+                          borderColor: waitingNote ? "#d1fae5" : "#e0e7ff",
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+              <View style={{ height: SABER }} />
+            </>
           )}
           <View style={{ height: metrics.keyH }}>
             {layout.whites.map((key) => {
@@ -226,11 +203,6 @@ export function KeyboardDock({
           </View>
         </View>
       </ScrollView>
-      {praise ? (
-        <View pointerEvents="none" style={[styles.praise, { bottom: metrics.keyH + 8 }]}>
-          <Text style={styles.praiseText}>{praise}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -240,8 +212,6 @@ const styles = StyleSheet.create({
   dockFill: { flex: 1, backgroundColor: "#05080f" },
   fill: { flex: 1 },
   fall: { position: "relative", overflow: "hidden", backgroundColor: "#05080f" },
-  praise: { position: "absolute", left: 0, right: 0, alignItems: "center", zIndex: 6 },
-  praiseText: { fontFamily: fonts.bold, color: "#6ee7b7", fontSize: 22, textShadowColor: "rgba(0,0,0,0.7)", textShadowRadius: 10, textShadowOffset: { width: 0, height: 1 } },
   saberLane: {
     position: "absolute",
     left: 0,

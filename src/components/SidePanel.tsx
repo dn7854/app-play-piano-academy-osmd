@@ -108,6 +108,8 @@ export function SidePanel({
   midiName,
   pdfEnabled,
   pro,
+  showRight,
+  showLeft,
   others,
   onPlayMode,
   onWait,
@@ -119,6 +121,8 @@ export function SidePanel({
   onMidi,
   onPdf,
   onPiece,
+  onRight,
+  onLeft,
   onClose,
 }: {
   title: string;
@@ -140,6 +144,8 @@ export function SidePanel({
   midiName: string | null;
   pdfEnabled: boolean;
   pro: boolean;
+  showRight: boolean;
+  showLeft: boolean;
   others: PieceSummary[];
   onPlayMode: () => void;
   onWait: () => void;
@@ -151,11 +157,15 @@ export function SidePanel({
   onMidi: () => void;
   onPdf: () => void;
   onPiece: (piece: PieceSummary) => void;
+  onRight: () => void;
+  onLeft: () => void;
   onClose?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [zoomLabel, setZoomLabel] = useState(zoom);
+  const [sensLabel, setSensLabel] = useState(sensitivity);
   useEffect(() => setZoomLabel(zoom), [zoom]);
+  useEffect(() => setSensLabel(sensitivity), [sensitivity]);
   return (
     <View style={styles.panel}>
       <View style={[styles.head, { paddingTop: insets.top }]}>
@@ -183,6 +193,9 @@ export function SidePanel({
             })}
           </View>
         </View>
+        <Text style={styles.section}>Keyboard tracks</Text>
+        <Toggle title="Right hand" detail="First MIDI track, shown on the keyboard." on={showRight} tone="sky" onPress={onRight} />
+        <Toggle title="Left hand" detail="Second MIDI track, shown on the keyboard." on={showLeft} tone="green" onPress={onLeft} />
         <Toggle title="Play mode" detail="The backing track plays. Sample piano notes stay off." on={playMode} tone="sky" onPress={onPlayMode} />
         <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
         <View style={styles.sliderBlock}>
@@ -228,16 +241,17 @@ export function SidePanel({
           <View style={styles.sliderBlock}>
             <View style={styles.sliderHead}>
               <Text style={styles.section}>Mic sensitivity</Text>
-              <Text style={styles.rowValue}>{Math.round(sensitivity * 100)}</Text>
+              <Text style={styles.rowValue}>{Math.round(sensLabel * 100)}</Text>
             </View>
             <Slider
               minimumValue={0}
               maximumValue={1}
               step={0.01}
-              value={sensitivity}
+              value={sensLabel}
               minimumTrackTintColor="#059669"
               maximumTrackTintColor="#e2e8f0"
               thumbTintColor="#059669"
+              onValueChange={setSensLabel}
               onSlidingComplete={onSensitivity}
             />
             <Text style={styles.help}>
