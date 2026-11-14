@@ -1,15 +1,18 @@
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { usePurchases } from "../src/purchases";
+import { config } from "../src/config";
+import { purchaseWasCancelled, usePurchases } from "../src/purchases";
 import { dark, fonts } from "../src/theme";
 
 export default function Settings() {
   const insets = useSafeAreaInsets();
-  const { pro, restore } = usePurchases();
+  const { pro, restore, buy, priceLabel, configured, devUnlock } = usePurchases();
   const [restoreText, setRestoreText] = useState<string | null>(null);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
 
   async function open(url: string) {
     try {
@@ -26,6 +29,27 @@ export default function Settings() {
       setRestoreText(unlocked ? "Your Pro purchase is active." : "No Pro purchase found for this account.");
     } catch {
       setRestoreText("Restore failed. Please try again.");
+    }
+  }
+
+  async function onBuy() {
+    setBuyError(null);
+    if (!configured) {
+      if (__DEV__) {
+        devUnlock();
+        return;
+      }
+      setBuyError("Add the RevenueCat keys in .env, then rebuild.");
+      return;
+    }
+    setBuyBusy(true);
+    try {
+      const ok = await buy();
+      if (!ok) setBuyError("The store did not unlock Piano Academy Pro.");
+    } catch (err) {
+      if (!purchaseWasCancelled(err)) setBuyError(err instanceof Error ? err.message : "Purchase failed.");
+    } finally {
+      setBuyBusy(false);
     }
   }
 
@@ -52,6 +76,23 @@ export default function Settings() {
           <Text style={styles.actionText}>Restore purchases</Text>
         </Pressable>
         {restoreText ? <Text style={styles.restoreText}>{restoreText}</Text> : null}
+
+        {!pro ? (
+          <>
+            <Text style={styles.section}>Upgrade to Pro</Text>
+            <View style={styles.upgradeCard}>
+              <Text style={styles.upgradeKicker}>PIANO ACADEMY PRO</Text>
+              <Text style={styles.upgradePrice}>{priceLabel ?? "One-time purchase"}</Text>
+              <Text style={styles.upgradeBody}>
+                Premium scores play in full. Free playback stops after {config.previewSeconds} seconds. PDF download is included with Pro.
+              </Text>
+              {buyError ? <Text style={styles.buyError}>{buyError}</Text> : null}
+              <Pressable style={styles.upgradeBtn} onPress={() => void onBuy()} disabled={buyBusy}>
+                {buyBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.upgradeBtnText}>{configured ? "Unlock Pro" : __DEV__ ? "Dev unlock" : "Unlock Pro"}</Text>}
+              </Pressable>
+            </View>
+          </>
+        ) : null}
 
         <Text style={styles.section}>Links</Text>
         <Pressable style={styles.row} onPress={() => void open("https://danijelbrecelj.com")}>
@@ -111,5 +152,12 @@ const styles = StyleSheet.create({
   action: { height: 48, borderRadius: 16, backgroundColor: dark.sky, alignItems: "center", justifyContent: "center" },
   actionText: { fontFamily: fonts.bold, color: "#0f172a", fontSize: 15 },
   restoreText: { fontFamily: fonts.regular, color: dark.muted, fontSize: 13 },
+  upgradeCard: { backgroundColor: "#0b2230", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 20, padding: 18, gap: 8 },
+  upgradeKicker: { fontFamily: fonts.bold, letterSpacing: 1.6, fontSize: 12, color: "#818cf8" },
+  upgradePrice: { fontFamily: fonts.bold, fontSize: 30, color: dark.fg },
+  upgradeBody: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: dark.muted },
+  buyError: { fontFamily: fonts.medium, fontSize: 13, color: "#fb7185" },
+  upgradeBtn: { height: 48, borderRadius: 24, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center", marginTop: 6 },
+  upgradeBtnText: { fontFamily: fonts.bold, color: "#fff", fontSize: 15 },
   copyright: { fontFamily: fonts.regular, color: dark.muted, fontSize: 12, textAlign: "center", marginTop: 8 },
 });
