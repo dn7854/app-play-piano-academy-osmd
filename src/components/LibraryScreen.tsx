@@ -58,7 +58,7 @@ function Card({
       </View>
       <View style={{ alignItems: "flex-end", gap: 6 }}>
         {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-        {premium ? <Text style={styles.pro}>PRO</Text> : null}
+        {!premium ? <Text style={styles.free}>FREE</Text> : null}
       </View>
     </Pressable>
   );
@@ -198,7 +198,25 @@ export function LibraryScreen({ slug }: { slug?: string }) {
         contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32, gap: 14, flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load()} tintColor={dark.sky} />}
       >
-        <Text style={styles.brand}>D8R</Text>
+        <View style={styles.topRow}>
+          <View style={styles.topSide}>
+            {slug ? (
+              <Pressable
+                style={styles.headerBtn}
+                accessibilityLabel="Back to the library"
+                onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+              >
+                <Text style={styles.headerIcon}>‹</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={styles.brand}>D8R PIANO ACADEMY</Text>
+          <View style={styles.topSide}>
+            <Pressable style={styles.headerBtn} accessibilityLabel="Open settings" onPress={() => router.push("/settings")}>
+              <Text style={styles.settingsText}>Settings</Text>
+            </Pressable>
+          </View>
+        </View>
         <Text style={styles.heading}>{heading}</Text>
         <Text style={styles.lede}>{lede}</Text>
         {(path ? flowFromCache : fromCache) ? <Text style={styles.cache}>Showing scores saved on this device.</Text> : null}
@@ -326,6 +344,12 @@ const styles = StyleSheet.create({
   cardSub: { fontFamily: fonts.regular, color: dark.muted, marginTop: 3 },
   meta: { fontFamily: fonts.medium, color: dark.sky, fontSize: 12 },
   pro: { fontFamily: fonts.bold, color: "#0f172a", backgroundColor: dark.sky, overflow: "hidden", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, fontSize: 10 },
+  free: { fontFamily: fonts.bold, color: "#052e24", backgroundColor: "#34d399", overflow: "hidden", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, fontSize: 10, letterSpacing: 1 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  topSide: { minWidth: 56, flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  headerBtn: { minHeight: 34, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1, borderColor: dark.cardEdge, backgroundColor: dark.card, alignItems: "center", justifyContent: "center" },
+  headerIcon: { fontFamily: fonts.bold, color: dark.fg, fontSize: 22, marginTop: -2 },
+  settingsText: { fontFamily: fonts.bold, color: dark.sky, fontSize: 13 },
   emptyBox: { borderRadius: 16, borderWidth: 1, borderColor: dark.cardEdge, backgroundColor: dark.card, padding: 16 },
   empty: { fontFamily: fonts.regular, color: dark.muted, fontSize: 15, lineHeight: 21 },
   errorBox: { borderRadius: 16, borderWidth: 1, borderColor: "#7f1d1d", backgroundColor: "#1f1316", padding: 14, gap: 10 },

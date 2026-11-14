@@ -84,7 +84,11 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [panel, setPanel] = useState(false);
   const [playMode, setPlayMode] = useState(true);
   const waitMode = !playMode;
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(landscape ? 1.85 : 1);
+
+  useEffect(() => {
+    setZoom(landscape ? 1.85 : 1);
+  }, [landscape]);
   const [selectedBpm, setSelectedBpm] = useState(120);
   const [backingIndex, setBackingIndex] = useState(-1);
   const [tempoOpen, setTempoOpen] = useState(false);
@@ -364,6 +368,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
               landscape={landscape}
               waterfall={!showsScore(viewMode)}
               waitMode={waitMode}
+              praise={playback.praise}
               onKey={(note) => playback.onNote(note, "key")}
             />
           ) : null}

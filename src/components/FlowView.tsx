@@ -99,7 +99,7 @@ function ScoreTile({
           <Text style={[styles.badge, { color: tone.color, backgroundColor: tone.bg }]}>{piece.difficulty}</Text>
         ) : null}
       </View>
-      {locked ? <Text style={styles.lockText}>PRO</Text> : null}
+      {locked ? <Text style={styles.lockText}>PRO</Text> : !piece.isPremium ? <Text style={styles.freeText}>FREE</Text> : null}
     </Pressable>
   );
 }
@@ -190,5 +190,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     fontSize: 10,
+  },
+  freeText: {
+    fontFamily: fonts.bold,
+    color: "#052e24",
+    backgroundColor: "#34d399",
+    overflow: "hidden",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    fontSize: 10,
+    letterSpacing: 1,
   },
 });

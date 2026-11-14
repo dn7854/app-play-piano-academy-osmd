@@ -18,6 +18,7 @@ type Snap = {
   success: number[];
   wrong: number[];
   ended: boolean;
+  praise: string | null;
 };
 
 function quietly(label: string, action: () => void | Promise<unknown>) {
@@ -42,7 +43,10 @@ const empty: Snap = {
   success: [],
   wrong: [],
   ended: false,
+  praise: null,
 };
+
+const PRAISE = ["Perfect!", "On Beat!", "Excellent!", "Bravo!", "Spot on!"];
 
 export function usePlayback({
   notes,
@@ -93,6 +97,8 @@ export function usePlayback({
   const playerRef = useRef<AudioPlayer | null>(null);
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const frame = useRef(0);
+  const hitCount = useRef(0);
+  const praiseTarget = useRef(3 + Math.floor(Math.random() * 3));
 
   const player = useCallback(() => {
     if (playerRef.current) return playerRef.current;
@@ -250,8 +256,26 @@ export function usePlayback({
     (midi: number, source: "key" | "midi" | "mic") => {
       if (source !== "mic") playPianoNote(midi, source === "midi" ? 0.95 : 0.8);
       const now = Date.now();
-      if (!playingRef.current || !live.current.waitMode) {
+      if (!playingRef.current) {
         publish({ success: [], wrong: [] }, true);
+        return;
+      }
+      // Play mode: a correctly pressed note turns green and earns praise every few hits.
+      if (!live.current.waitMode) {
+        const sounding = soundingNotes(notesRef.current, scoreRef.current);
+        if (!sounding.includes(midi)) {
+          publish({ success: [], wrong: [] }, true);
+          return;
+        }
+        publish({ success: [midi], wrong: [] }, true);
+        timers.current.push(setTimeout(() => publish({ success: [] }, true), 420));
+        hitCount.current += 1;
+        if (hitCount.current >= praiseTarget.current) {
+          hitCount.current = 0;
+          praiseTarget.current = 3 + Math.floor(Math.random() * 3);
+          publish({ praise: PRAISE[Math.floor(Math.random() * PRAISE.length)] }, true);
+          timers.current.push(setTimeout(() => publish({ praise: null }, true), 1200));
+        }
         return;
       }
       const expected = waitingNotes(notesRef.current, scoreRef.current);
