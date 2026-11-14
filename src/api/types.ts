@@ -27,6 +27,11 @@ export type PieceSummary = {
   tempo: number;
   timeSignature: string;
   imageUrl: string | null;
+  /**
+   * First page of the PDF, used when `imageUrl` is null.
+   * Older catalog responses omit it; a missing value is treated as null.
+   */
+  pdfThumbnailUrl?: string | null;
   isPremium: boolean;
   hasPdf: boolean;
   position?: number;

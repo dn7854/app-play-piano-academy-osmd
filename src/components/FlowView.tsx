@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { Difficulty, FlowSection, FlowTile, PieceSummary } from "../api/types";
+import { pieceCoverUrl } from "../lib/covers";
 import { usePurchases } from "../purchases";
 import { dark, fonts, TABLET_MIN } from "../theme";
 
@@ -87,7 +88,7 @@ function ScoreTile({
   const label = [piece.title, piece.composer, piece.difficulty, locked ? "Premium" : null].filter(Boolean).join(", ");
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => onOpen(piece)} style={styles.tile}>
-      <Cover uri={piece.imageUrl} />
+      <Cover imageUrl={piece.imageUrl} pdfThumbnailUrl={piece.pdfThumbnailUrl} />
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>
           {piece.title}
@@ -104,9 +105,10 @@ function ScoreTile({
   );
 }
 
-function Cover({ uri }: { uri: string | null }) {
-  const [failedUri, setFailedUri] = useState<string | null>(null);
-  if (!uri || failedUri === uri) {
+function Cover({ imageUrl, pdfThumbnailUrl }: { imageUrl?: string | null; pdfThumbnailUrl?: string | null }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const uri = pieceCoverUrl({ imageUrl, pdfThumbnailUrl }, failed);
+  if (!uri) {
     return (
       <View style={styles.markWrap}>
         <Text style={styles.mark}>♪</Text>
@@ -115,10 +117,11 @@ function Cover({ uri }: { uri: string | null }) {
   }
   return (
     <Image
+      key={uri}
       source={{ uri }}
       style={styles.thumb}
       resizeMode="cover"
-      onError={() => setFailedUri(uri)}
+      onError={() => setFailed(uri)}
       accessibilityIgnoresInvertColors
     />
   );

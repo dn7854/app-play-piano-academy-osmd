@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { openingAnchor, type TimedNote } from "../lib/notes";
+import { performanceColor } from "../lib/trackColors";
+import { waterfallBar, waterfallHitY } from "../lib/waterfall";
 import { fonts } from "../theme";
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -71,8 +73,9 @@ export function KeyboardDock({
   const [lane, setLane] = useState(0);
   const [tapped, setTapped] = useState<number | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pixelsPerSecond = Math.max(lane * 0.85, 220);
-  const lookAhead = lane > 0 ? lane / pixelsPerSecond : 1.2;
+  const hitY = waterfallHitY(lane);
+  const pixelsPerSecond = Math.max((hitY || lane) * 0.85, 220);
+  const lookAhead = hitY > 0 ? hitY / pixelsPerSecond : 1.2;
 
   useEffect(() => {
     return () => {
@@ -101,15 +104,24 @@ export function KeyboardDock({
     ? notes.filter((note) => note.time < scoreTime + lookAhead && note.time + note.duration > scoreTime - 0.05)
     : [];
 
+  function sounding(midi: number) {
+    return notes.find(
+      (note) => note.note === midi && scoreTime >= note.time - 0.02 && scoreTime <= note.time + note.duration + 0.02,
+    );
+  }
+
   function keyStyle(midi: number, black: boolean) {
     const isWait = waiting.includes(midi);
     const isOn = active.includes(midi);
     const isOk = success.includes(midi);
     const isBad = wrong.includes(midi);
+    if (isOk) return { backgroundColor: black ? "#059669" : "#34d399", shadowColor: "#34d399" };
     if (isWait) return { backgroundColor: black ? "#059669" : "#34d399", shadowColor: "#34d399" };
-    if (isOk) return { backgroundColor: black ? "#10b981" : "#6ee7b7", shadowColor: "#6ee7b7" };
     if (tapped === midi || isBad) return { backgroundColor: black ? "#ea580c" : "#fb923c", shadowColor: "#f97316" };
-    if (isOn) return { backgroundColor: black ? "#38bdf8" : "#7dd3fc", shadowColor: "#38bdf8" };
+    if (isOn) {
+      const color = performanceColor(sounding(midi));
+      return { backgroundColor: color, shadowColor: color };
+    }
     return null;
   }
 
@@ -135,12 +147,12 @@ export function KeyboardDock({
       >
         <View style={{ width: layout.width, height: (waterfall ? lane : 0) + metrics.keyH }}>
           {waterfall && (
-            <View style={[styles.fall, { height: lane, width: layout.width }]}>
+            <View style={[styles.fall, { height: hitY, width: layout.width }]}>
               {falling.map((note, index) => {
-                const yStart = lane - (note.time - scoreTime) * pixelsPerSecond;
-                const height = Math.max(4, note.duration * pixelsPerSecond);
-                const top = yStart - height;
+                const box = waterfallBar(note, scoreTime, lane, pixelsPerSecond, hitY);
+                if (!box) return null;
                 const waitingNote = waiting.includes(note.note);
+                const color = waitingNote ? "#34d399" : performanceColor(note);
                 const width = isBlack(note.note) ? metrics.black : metrics.white - 4;
                 return (
                   <View
@@ -149,20 +161,21 @@ export function KeyboardDock({
                       styles.beam,
                       {
                         left: xOf(layout, note.note, metrics.white, metrics.black) + (isBlack(note.note) ? 0 : 2),
-                        top,
+                        top: box.top,
                         width,
-                        height,
-                        backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(56,189,248,0.92)",
-                        shadowColor: waitingNote ? "#34d399" : "#38bdf8",
-                        borderColor: waitingNote ? "#d1fae5" : "#e0f2fe",
+                        height: box.height,
+                        backgroundColor: color,
+                        shadowColor: color,
+                        borderColor: "rgba(255,255,255,0.55)",
                       },
                     ]}
                   />
                 );
               })}
-              <View style={[styles.fade, { height: Math.min(72, lane * 0.22) }]} />
+              <NoteFade height={hitY} />
             </View>
           )}
+          {waterfall ? <View style={{ height: Math.max(0, lane - hitY) }} /> : null}
           <View style={{ height: metrics.keyH }}>
             {layout.whites.map((key) => {
               const lit = keyStyle(key.midi, false);
@@ -205,12 +218,28 @@ export function KeyboardDock({
   );
 }
 
+/** Notes fade in under the seek bar. Stops follow the website waterfall mask. */
+function NoteFade({ height }: { height: number }) {
+  const steps = 24;
+  if (!(height > 0)) return null;
+  return (
+    <View pointerEvents="none" style={[styles.fade, { height }]}>
+      {Array.from({ length: steps }, (_, index) => {
+        const mid = (index + 0.5) / steps;
+        const mask = mid >= 0.45 ? 1 : mid <= 0.18 ? (mid / 0.18) * 0.35 : 0.35 + ((mid - 0.18) / 0.27) * 0.65;
+        const opacity = Math.max(0, 1 - mask);
+        return <View key={index} style={{ flex: 1, backgroundColor: `rgba(5, 8, 15, ${opacity.toFixed(3)})` }} />;
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   dock: { backgroundColor: "#070b12", borderTopWidth: 1, borderTopColor: "#164e63" },
   dockFill: { flex: 1, backgroundColor: "#05080f" },
   fill: { flex: 1 },
   fall: { position: "relative", overflow: "hidden", backgroundColor: "#05080f" },
-  fade: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.72)" },
+  fade: { position: "absolute", top: 0, left: 0, right: 0 },
   saberLane: {
     position: "absolute",
     left: 0,
@@ -239,10 +268,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderRadius: 6,
     borderWidth: 1,
-    shadowOpacity: 1,
-    shadowRadius: 16,
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
+    elevation: 0,
   },
   white: {
     position: "absolute",

@@ -5,6 +5,7 @@ import { playPianoNote } from "../hooks/usePianoSound";
 import { isPreviewLocked } from "../lib/preview-limit";
 import { nextEventTime, soundingNotes, waitingNotes, type TimedNote } from "../lib/notes";
 import { diagnosticText, recordDiagnostic } from "../lib/diagnostics";
+import { SUCCESS_GAP_MS, SUCCESS_HOLD_MS, SUCCESS_KEY_MS, SUCCESS_PHRASES } from "../lib/praise";
 import { backingPlaybackRate, countIn, tempoRatio } from "../lib/tempo";
 
 export type BackingTrack = { uri: string; bpm: number | null };
@@ -17,6 +18,7 @@ type Snap = {
   waiting: number[];
   success: number[];
   wrong: number[];
+  successText: string | null;
   ended: boolean;
 };
 
@@ -41,6 +43,7 @@ const empty: Snap = {
   waiting: [],
   success: [],
   wrong: [],
+  successText: null,
   ended: false,
 };
 
@@ -90,6 +93,9 @@ export function usePlayback({
   const lastPublish = useRef(0);
   const paywallLatch = useRef(false);
   const advanceLock = useRef(0);
+  const lastPraise = useRef(0);
+  const praiseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const releaseTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const playerRef = useRef<AudioPlayer | null>(null);
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const frame = useRef(0);
@@ -246,25 +252,75 @@ export function usePlayback({
     begin(scoreRef.current < 0.05);
   }, [begin, stop]);
 
+  const releaseSuccess = useCallback(
+    (midi: number) => {
+      const pending = releaseTimers.current.get(midi);
+      if (pending) clearTimeout(pending);
+      releaseTimers.current.delete(midi);
+      if (!snapRef.current.success.includes(midi)) return;
+      publish({ success: snapRef.current.success.filter((note) => note !== midi) }, true);
+    },
+    [publish],
+  );
+
+  const holdSuccess = useCallback(
+    (midi: number, untilRelease: boolean) => {
+      const current = snapRef.current.success;
+      if (!current.includes(midi)) publish({ success: [...current, midi], wrong: [] }, true);
+      else if (snapRef.current.wrong.length) publish({ wrong: [] }, true);
+      const pending = releaseTimers.current.get(midi);
+      if (pending) clearTimeout(pending);
+      releaseTimers.current.delete(midi);
+      if (!untilRelease) {
+        releaseTimers.current.set(
+          midi,
+          setTimeout(() => releaseSuccess(midi), SUCCESS_KEY_MS),
+        );
+      }
+    },
+    [publish, releaseSuccess],
+  );
+
+  const praise = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPraise.current <= SUCCESS_GAP_MS) return;
+    lastPraise.current = now;
+    const phrase = SUCCESS_PHRASES[Math.floor(Math.random() * SUCCESS_PHRASES.length)];
+    publish({ successText: phrase }, true);
+    if (praiseTimer.current) clearTimeout(praiseTimer.current);
+    praiseTimer.current = setTimeout(() => publish({ successText: null }, true), SUCCESS_HOLD_MS);
+  }, [publish]);
+
   const onNote = useCallback(
-    (midi: number, source: "key" | "midi" | "mic") => {
+    (midi: number, source: "key" | "midi" | "mic", phase: "on" | "off" = "on") => {
+      if (phase === "off") {
+        if (source === "midi") releaseSuccess(midi);
+        return;
+      }
       if (source !== "mic") playPianoNote(midi, source === "midi" ? 0.95 : 0.8);
       const now = Date.now();
-      if (!playingRef.current || !live.current.waitMode) {
-        publish({ success: [], wrong: [] }, true);
-        return;
-      }
-      const expected = waitingNotes(notesRef.current, scoreRef.current);
-      if (!expected.includes(midi)) {
-        publish({ wrong: [midi], success: [] }, true);
+      const t = scoreRef.current;
+      const events = notesRef.current;
+      const waiting = waitingNotes(events, t);
+      const windowSeconds = (60 / Math.max(1, live.current.pieceBpm)) * 0.35;
+      const inWindow = events.some(
+        (event) => event.note === midi && t >= event.time - windowSeconds && t <= event.time + event.duration + windowSeconds,
+      );
+      const waitHit = playingRef.current && live.current.waitMode && waiting.includes(midi);
+      const correct = live.current.waitMode ? waitHit : inWindow;
+
+      if (correct) {
+        holdSuccess(midi, source === "midi");
+        praise();
+      } else if (playingRef.current && live.current.waitMode) {
+        releaseSuccess(midi);
+        publish({ wrong: [midi] }, true);
         timers.current.push(setTimeout(() => publish({ wrong: [] }, true), 360));
-        return;
       }
-      if (now - advanceLock.current < 280) return;
+
+      if (!waitHit || now - advanceLock.current < 280) return;
       advanceLock.current = now;
-      const next = nextEventTime(notesRef.current, scoreRef.current, live.current.duration);
-      publish({ success: [midi], wrong: [] }, true);
-      timers.current.push(setTimeout(() => publish({ success: [] }, true), 420));
+      const next = nextEventTime(events, t, live.current.duration);
       if (next >= live.current.duration - 0.05) {
         scoreRef.current = live.current.duration;
         stop();
@@ -273,7 +329,7 @@ export function usePlayback({
       }
       seek(next, true);
     },
-    [publish, seek, stop],
+    [holdSuccess, praise, publish, releaseSuccess, seek, stop],
   );
 
   useEffect(() => {
@@ -372,6 +428,9 @@ export function usePlayback({
   useEffect(() => {
     return () => {
       stop();
+      if (praiseTimer.current) clearTimeout(praiseTimer.current);
+      for (const id of releaseTimers.current.values()) clearTimeout(id);
+      releaseTimers.current.clear();
       const audio = playerRef.current;
       playerRef.current = null;
       if (audio) quietly("remove", () => audio.remove());

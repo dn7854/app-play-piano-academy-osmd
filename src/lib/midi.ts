@@ -1,6 +1,6 @@
 import type { TimedNote } from "./notes";
 
-export type MidiNote = TimedNote & { velocity: number; track: number };
+export type MidiNote = TimedNote & { velocity: number; track: number; channel: number };
 
 type TempoChange = { tick: number; us: number };
 
@@ -49,7 +49,7 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
   const trackCount = u16(data, 10);
   let offset = 14;
   const tempos: TempoChange[] = [{ tick: 0, us: 500000 }];
-  const raw: { tick: number; end: number; note: number; velocity: number; track: number }[] = [];
+  const raw: { tick: number; end: number; note: number; velocity: number; track: number; channel: number }[] = [];
 
   for (let track = 0; track < trackCount && offset + 8 <= data.length; track++) {
     if (String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]) !== "MTrk") break;
@@ -98,7 +98,7 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
         const started = open.get(key);
         open.delete(key);
         if (started && a >= 21 && a <= 108) {
-          raw.push({ tick: started.tick, end: tick, note: a, velocity: started.velocity, track });
+          raw.push({ tick: started.tick, end: tick, note: a, velocity: started.velocity, track, channel });
         }
       }
     }
@@ -119,6 +119,7 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
         note: note.note,
         velocity: note.velocity,
         track: note.track,
+        channel: note.channel,
       };
     })
     .sort((a, b) => a.time - b.time || a.note - b.note);
