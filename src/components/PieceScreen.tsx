@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
 import Slider from "@react-native-community/slider";
@@ -27,7 +28,7 @@ import { ACOUSTIC_MIC_KEY, MIDI_TOGGLE_KEY, usePersistedBoolean, usePersistedStu
 import { config } from "../config";
 import * as FileSystem from "expo-file-system/legacy";
 import { ScoreWebView } from "../score/ScoreWebView";
-import { TABLET_MIN, fonts, light } from "../theme";
+import { TABLET_MIN, fonts, light, studioNav } from "../theme";
 
 function groupBacking(files: { label: string; bpm: number | null; url: string }[]) {
   const groups: { label: string; files: { label: string; bpm: number | null; url: string }[] }[] = [];
@@ -73,7 +74,6 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const { width, height } = useWindowDimensions();
   const tablet = Math.min(width, height) >= TABLET_MIN;
   const landscape = width > height;
-  const dockPanel = tablet && landscape;
   const { pro, appUserId } = usePurchases();
   const [piece, setPiece] = useState<PieceDetail | null>(null);
   const [cached, setCached] = useState<CachedPiece | null>(null);
@@ -81,7 +81,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
-  const [panel, setPanel] = useState(dockPanel);
+  const [panel, setPanel] = useState(false);
   const [playMode, setPlayMode] = useState(true);
   const waitMode = !playMode;
   const [zoom, setZoom] = useState(1);
@@ -99,10 +99,6 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const micOn = acoustic.hydrated && acoustic.value;
   const midiEnabled = midiToggle.hydrated && midiToggle.value;
   const [sensitivity, setSensitivity] = usePitchSensitivity(tablet);
-
-  useEffect(() => {
-    setPanel(dockPanel);
-  }, [dockPanel]);
 
   useEffect(() => {
     let cancel = false;
@@ -281,7 +277,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       onMidi={() => midiToggle.setValue(!midiToggle.value)}
       onPdf={() => void onPdf()}
       onPiece={(next) => router.replace({ pathname: "/piece/[id]", params: { id: next.slug || next.id, collection: collection ?? "" } })}
-      onClose={dockPanel ? undefined : () => setPanel(false)}
+      onClose={() => setPanel(false)}
     />
   );
 
@@ -290,8 +286,9 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
 
   return (
     <View style={styles.screen}>
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-      <View style={styles.header}>
+      <StatusBar style="light" />
+      <View style={{ flex: 1 }}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.iconBtn} accessibilityLabel="Back to the library">
           <Text style={styles.iconText}>‹</Text>
         </Pressable>
@@ -303,13 +300,11 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             {offline ? " · Saved on device" : ""}
           </Text>
         </View>
-        {!dockPanel ? (
-          <Pressable onPress={() => setPanel(true)} style={styles.iconBtn} accessibilityLabel="Open studio panel">
-            <Text style={styles.iconText}>☰</Text>
-          </Pressable>
-        ) : null}
+        <Pressable onPress={() => setPanel(true)} style={styles.iconBtn} accessibilityLabel="Open studio panel">
+          <Text style={styles.iconText}>☰</Text>
+        </Pressable>
       </View>
-      <View style={{ flex: 1, flexDirection: dockPanel ? "row" : "column" }}>
+      <View style={{ flex: 1 }}>
         <View style={styles.stage}>
           <View
             pointerEvents={showsScore(viewMode) ? "auto" : "none"}
@@ -373,7 +368,6 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             />
           ) : null}
         </View>
-        {dockPanel ? <View style={{ width: 340, borderLeftWidth: 1, borderLeftColor: "#e7e0d2" }}>{panelNode}</View> : null}
       </View>
       </View>
       {counting ? (
@@ -381,7 +375,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
           <Text style={[styles.countdownNum, { fontSize: Math.min(168, Math.round(width * 0.42)) }]}>{playback.countdown}</Text>
         </View>
       ) : null}
-      {panel && !dockPanel ? (
+      {panel ? (
         <View style={styles.overlay}>
           <Pressable style={styles.dismiss} onPress={() => setPanel(false)} />
           <View style={styles.sheet}>{panelNode}</View>
@@ -396,11 +390,29 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: light.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: light.bg, padding: 24, gap: 12 },
-  header: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: light.bg, zIndex: 8, elevation: 8 },
-  headerTitle: { fontFamily: fonts.bold, color: light.ink, fontSize: 16 },
-  headerSub: { fontFamily: fonts.medium, color: light.muted, fontSize: 12 },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e7e0d2", alignItems: "center", justifyContent: "center" },
-  iconText: { fontFamily: fonts.bold, fontSize: 20, color: light.ink, marginTop: -2 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: studioNav.padH,
+    paddingBottom: studioNav.padB,
+    backgroundColor: studioNav.bg,
+    zIndex: 8,
+    elevation: 8,
+  },
+  headerTitle: { fontFamily: fonts.bold, color: studioNav.title, fontSize: 16, lineHeight: 20 },
+  headerSub: { fontFamily: fonts.medium, color: studioNav.muted, fontSize: 12, lineHeight: 16 },
+  iconBtn: {
+    width: studioNav.icon,
+    height: studioNav.icon,
+    borderRadius: studioNav.icon / 2,
+    backgroundColor: studioNav.button,
+    borderWidth: 1,
+    borderColor: studioNav.buttonEdge,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconText: { fontFamily: fonts.bold, fontSize: 20, color: studioNav.title, marginTop: -2 },
   stage: { flex: 1, overflow: "hidden" },
   score: { flex: 1, zIndex: 1 },
   scoreParked: { position: "absolute", width: "100%", height: 1, opacity: 0, overflow: "hidden", zIndex: 0 },

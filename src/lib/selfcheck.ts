@@ -1,7 +1,7 @@
 import { ApiError, flowEndpointMissing, normalizeFlow } from "../api/client";
 import { parseMidi } from "./midi";
 import { notesFromEmbed, osmdHalfToneToMidi, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
-import { portraitPageScale } from "./embedScale";
+import { pageContainScale } from "./embedScale";
 import { matchAnyExpected, openingAnchor, waitingNotes } from "./notes";
 import { clampTempo, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
@@ -86,10 +86,15 @@ assert(osmdHalfToneToMidi(200) === 108, "midi ceiling");
 assert(osmdHalfToneToMidi(-40) === 21, "midi floor");
 
 const naturalH = 1152 * 297 / 210;
-const fitted = portraitPageScale(360, 480, 1152, naturalH, 360 / 1152);
-assert(fitted != null && fitted < 360 / 1152 && Math.abs(fitted - Math.min(360 / 1152, 480 / naturalH)) < 1e-9, "portrait fits the page height");
-const zoomed = portraitPageScale(360, 480, 1152, naturalH, (360 / 1152) * 2);
-assert(zoomed != null && fitted != null && Math.abs(zoomed - fitted * 2) < 1e-9, "portrait keeps the zoom");
+const byHeight = pageContainScale(800, 400, 1152, naturalH, 1);
+assert(byHeight != null && Math.abs(byHeight - 400 / naturalH) < 1e-9, "page fits the slot height");
+const byWidth = pageContainScale(400, 2000, 1152, naturalH, 1);
+assert(byWidth != null && Math.abs(byWidth - 400 / 1152) < 1e-9, "page fits the slot width");
+const grown = pageContainScale(2304, 4000, 1152, naturalH, 1);
+assert(grown != null && Math.abs(grown - 2) < 1e-9, "page can grow to fill a large slot");
+const zoomed = pageContainScale(800, 400, 1152, naturalH, 2);
+assert(zoomed != null && byHeight != null && Math.abs(zoomed - byHeight * 2) < 1e-9, "page keeps the zoom");
+assert(pageContainScale(10, 400, 1152, naturalH, 1) == null, "page ignores a tiny slot");
 
 assert(isPreviewLocked(true, PREVIEW_SECONDS), "preview locks at 20");
 assert(!isPreviewLocked(false, 30), "free piece");

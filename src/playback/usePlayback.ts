@@ -83,7 +83,6 @@ export function usePlayback({
   live.current = { pieceBpm, duration, backing, playMode, waitMode, selectedBpm, gated };
   const onPaywallRef = useRef(onPaywall);
   onPaywallRef.current = onPaywall;
-  const triggered = useRef(new Set<number>());
   const playingRef = useRef(false);
   const scoreRef = useRef(0);
   const lastWall = useRef(0);
@@ -191,7 +190,6 @@ export function usePlayback({
       }
       if (!isPreviewLocked(live.current.gated, next)) paywallLatch.current = false;
       scoreRef.current = next;
-      triggered.current = new Set(notesRef.current.map((note, index) => (note.time < next - 0.03 ? index : -1)).filter((index) => index >= 0));
       syncBacking(next, resume && !live.current.waitMode);
       const waiting = live.current.waitMode && resume ? waitingNotes(notesRef.current, next) : [];
       publish(
@@ -280,9 +278,6 @@ export function usePlayback({
 
   useEffect(() => {
     notesRef.current = notes;
-    triggered.current = new Set(
-      notes.map((note, index) => (note.time < scoreRef.current - 0.03 ? index : -1)).filter((index) => index >= 0),
-    );
   }, [notes]);
 
   useEffect(() => {
@@ -338,22 +333,12 @@ export function usePlayback({
         stop();
         return;
       }
+      // Play mode follows the MP3 backing track only. Sample notes stay on key taps and wait-to-play.
       if (state.duration > 0 && scoreRef.current >= state.duration - 0.04) {
         scoreRef.current = state.duration;
         stop();
         publish({ ended: true }, true);
         return;
-      }
-      if (state.playMode) {
-        list.forEach((note, index) => {
-          if (triggered.current.has(index)) return;
-          if (note.time <= scoreRef.current && note.time > scoreRef.current - 0.12) {
-            triggered.current.add(index);
-            playPianoNote(note.note, 0.85);
-          } else if (note.time < scoreRef.current - 0.12) {
-            triggered.current.add(index);
-          }
-        });
       }
       const audio = playerRef.current;
       if (state.backing && audio && now - lastNudge.current > 1500) {

@@ -1,8 +1,8 @@
-import { portraitPageScaleJs } from "../lib/embedScale";
+import { pageContainScaleJs } from "../lib/embedScale";
 
 /**
- * Runs inside the bundled score page. Portrait layout is tightened to the
- * WebView slot, and one finger can drag the page on both axes at once.
+ * Runs inside the bundled score page. Every layout fits one A4 page inside
+ * the WebView slot, and one finger can drag the page on both axes at once.
  * The website studio is not involved.
  */
 export const APP_SCORE_PATCH = `(function () {
@@ -10,11 +10,10 @@ export const APP_SCORE_PATCH = `(function () {
   if (window.__d8rAppScore) return true;
   if (!document.documentElement) return false;
   window.__d8rAppScore = true;
-  ${portraitPageScaleJs}
+  ${pageContainScaleJs}
   var NATURAL_W = 1152;
   var NATURAL_H = NATURAL_W * 297 / 210;
-  var layout = "portrait";
-  var appliedW = 0;
+  var zoom = 1;
 
   function readMessage(data) {
     if (typeof data === "string") {
@@ -25,8 +24,12 @@ export const APP_SCORE_PATCH = `(function () {
 
   window.addEventListener("message", function (event) {
     var message = readMessage(event.data);
-    if (message && message.type === "setLayout" && typeof message.layout === "string") {
-      layout = message.layout;
+    if (!message) return;
+    if (message.type === "setZoom" && typeof message.zoom === "number" && message.zoom > 0) {
+      zoom = message.zoom;
+      schedule();
+    } else if (message.type === "setLayout") {
+      schedule();
     }
   });
 
@@ -38,30 +41,33 @@ export const APP_SCORE_PATCH = `(function () {
     return { scroller: scroller, stage: cream, wrap: cream.parentElement };
   }
 
+  var frame = 0;
+  function schedule() {
+    if (frame) return;
+    frame = requestAnimationFrame(function () {
+      frame = 0;
+      refit();
+    });
+  }
+
   function refit() {
-    if (layout !== "portrait") {
-      appliedW = 0;
-      return;
-    }
     var sheet = nodes();
     if (!sheet) return;
-    var margin = (sheet.scroller.clientWidth <= 768 ? 8 : 16) * 2;
-    var availW = Math.max(0, sheet.scroller.clientWidth - margin);
-    var availH = Math.max(0, sheet.scroller.clientHeight - margin);
     var wrapW = parseFloat(sheet.wrap.style.width);
-    if (!wrapW || Math.abs(wrapW - appliedW) < 1) return;
-    var desired = portraitPageScale(availW, availH, NATURAL_W, NATURAL_H, wrapW / NATURAL_W);
+    if (!wrapW) return;
+    var availW = sheet.scroller.clientWidth;
+    var availH = sheet.scroller.clientHeight;
+    var desired = pageContainScale(availW, availH, NATURAL_W, NATURAL_H, zoom);
     if (desired == null) return;
-    var nextW = NATURAL_W * desired;
-    if (Math.abs(wrapW - nextW) < 1) {
-      appliedW = wrapW;
-      return;
-    }
-    appliedW = nextW;
+    var nextW = Math.floor(NATURAL_W * desired);
+    var nextH = Math.floor(NATURAL_H * desired);
+    var curH = parseFloat(sheet.wrap.style.height) || 0;
+    if (Math.abs(wrapW - nextW) < 2 && Math.abs(curH - nextH) < 2) return;
     sheet.stage.style.transformOrigin = "top left";
     sheet.stage.style.transform = "scale(" + desired + ")";
     sheet.wrap.style.width = nextW + "px";
-    sheet.wrap.style.height = (NATURAL_H * desired) + "px";
+    sheet.wrap.style.height = nextH + "px";
+    sheet.wrap.style.flexShrink = "0";
     sheet.wrap.style.setProperty("--osmd-scale", String(desired));
   }
 
@@ -107,10 +113,10 @@ export const APP_SCORE_PATCH = `(function () {
       if (!flick) event.stopPropagation();
     }, true);
     if (window.ResizeObserver) {
-      var observer = new ResizeObserver(function () { requestAnimationFrame(refit); });
+      var observer = new ResizeObserver(function () { schedule(); });
       observer.observe(sheet.scroller);
     }
-    var styles = new MutationObserver(function () { refit(); });
+    var styles = new MutationObserver(function () { schedule(); });
     styles.observe(sheet.wrap, { attributes: true, attributeFilter: ["style"] });
     refit();
   }

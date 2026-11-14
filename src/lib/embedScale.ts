@@ -1,37 +1,36 @@
 /**
- * Turns the embed's fit-to-width scale into a scale that also fits the A4 page
- * inside the score slot (above the seek bar, and above the keyboard when it is open).
- * The WebView patch inlines `portraitPageScaleJs`. Keep this the only copy.
+ * Largest A4 scale that fits the score slot (width and height) above the
+ * seek bar and the keyboard. `zoom` is the studio slider (1 = fit the page).
+ * The WebView patch inlines `pageContainScaleJs`. Keep this the only copy.
  */
-export const portraitPageScaleJs = `function portraitPageScale(availW, availH, naturalW, naturalH, widthScale) {
-  if (availW < 40 || availH < 40 || naturalW < 40 || !(widthScale > 0)) return null;
-  var fitWidth = Math.min(1, availW / naturalW);
-  var fitPage = Math.min(fitWidth, availH / naturalH);
-  if (fitWidth < 0.05) return null;
-  var zoom = widthScale / fitWidth;
-  return Math.min(6, fitPage * zoom);
+export const pageContainScaleJs = `function pageContainScale(availW, availH, naturalW, naturalH, zoom) {
+  if (availW < 40 || availH < 40 || naturalW < 40 || naturalH < 40) return null;
+  var z = zoom > 0 ? zoom : 1;
+  var fit = Math.min(availW / naturalW, availH / naturalH);
+  if (!(fit > 0)) return null;
+  return Math.min(6, fit * z);
 }`;
 
-export function portraitPageScale(
+export function pageContainScale(
   availW: number,
   availH: number,
   naturalW: number,
   naturalH: number,
-  widthScale: number,
+  zoom: number,
 ): number | null {
   const run = new Function(
     "availW",
     "availH",
     "naturalW",
     "naturalH",
-    "widthScale",
-    `${portraitPageScaleJs}; return portraitPageScale(availW, availH, naturalW, naturalH, widthScale);`,
+    "zoom",
+    `${pageContainScaleJs}; return pageContainScale(availW, availH, naturalW, naturalH, zoom);`,
   ) as (
     availW: number,
     availH: number,
     naturalW: number,
     naturalH: number,
-    widthScale: number,
+    zoom: number,
   ) => number | null;
-  return run(availW, availH, naturalW, naturalH, widthScale);
+  return run(availW, availH, naturalW, naturalH, zoom);
 }
