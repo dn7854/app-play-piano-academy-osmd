@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.danijelbrecelj.playpianoacademymobile",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "D8R Piano Academy listens for the notes you play on an acoustic piano so Wait to play can move ahead. The audio stays on this device.",
         "UIBackgroundModes": [
@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "com.danijelbrecelj.playpianoacademymobile",
-      "versionCode": 1,
+      "versionCode": 19,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0e141b"
@@ -70,7 +70,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c1d6ce80-c702-438e-b6bf-36dd70fc7452"
+        "projectId": "89373633-4faa-4f40-8993-38a5b342e2c3"
       }
     }
   }
