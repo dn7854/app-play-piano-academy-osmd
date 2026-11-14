@@ -1,8 +1,6 @@
 import type { TimedNote } from "./notes";
 
-export type MidiNote = TimedNote & { velocity: number; track: number };
-
-type TempoChange = { tick: number; us: number };
+export type MidiNote = TimedNote & { velocity: number; track: number; channel: number };
 
 function u32(data: Uint8Array, offset: number) {
   return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
@@ -22,23 +20,9 @@ function vlq(data: Uint8Array, pos: { i: number }) {
   return value;
 }
 
-function ticksToSeconds(tick: number, changes: TempoChange[], tpq: number) {
-  let seconds = 0;
-  let last = 0;
-  let us = 500000;
-  for (const change of changes) {
-    if (change.tick >= tick) break;
-    seconds += ((change.tick - last) * us) / tpq / 1e6;
-    last = change.tick;
-    us = change.us;
-  }
-  seconds += ((tick - last) * us) / tpq / 1e6;
-  return seconds;
-}
-
 /**
  * Standard MIDI file → note events in score-seconds at `pieceBpm`.
- * File time is scaled by the file's first tempo so a quarter lines up with the written BPM.
+ * The file's embedded tempo is ignored - notes are forced to the given BPM.
  */
 export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote[]; duration: number; midiBpm: number } {
   if (data.length < 14 || String.fromCharCode(data[0], data[1], data[2], data[3]) !== "MThd") {
@@ -48,8 +32,7 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
   const tpq = division & 0x8000 ? 480 : division || 480;
   const trackCount = u16(data, 10);
   let offset = 14;
-  const tempos: TempoChange[] = [{ tick: 0, us: 500000 }];
-  const raw: { tick: number; end: number; note: number; velocity: number; track: number }[] = [];
+  const raw: { tick: number; end: number; note: number; velocity: number; track: number; channel: number }[] = [];
 
   for (let track = 0; track < trackCount && offset + 8 <= data.length; track++) {
     if (String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]) !== "MTrk") break;
@@ -70,12 +53,8 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
         if (status < 0xf0) running = status;
       }
       if (status === 0xff) {
-        const type = data[pos.i++];
+        pos.i++;
         const size = vlq(data, pos);
-        if (type === 0x51 && size === 3) {
-          const us = (data[pos.i] << 16) | (data[pos.i + 1] << 8) | data[pos.i + 2];
-          tempos.push({ tick, us });
-        }
         pos.i += size;
         continue;
       }
@@ -98,32 +77,31 @@ export function parseMidi(data: Uint8Array, pieceBpm: number): { notes: MidiNote
         const started = open.get(key);
         open.delete(key);
         if (started && a >= 21 && a <= 108) {
-          raw.push({ tick: started.tick, end: tick, note: a, velocity: started.velocity, track });
+          raw.push({ tick: started.tick, end: tick, note: a, velocity: started.velocity, track, channel });
         }
       }
     }
     offset = end;
   }
 
-  tempos.sort((a, b) => a.tick - b.tick);
-  const firstUs = tempos.find((change) => change.us > 0)?.us ?? 500000;
-  const midiBpm = 60_000_000 / firstUs;
-  const scale = pieceBpm > 0 ? midiBpm / pieceBpm : 1;
+  const bpm = pieceBpm > 0 ? pieceBpm : 120;
+  const secondsPerTick = (60 / bpm) / tpq;
   const notes: MidiNote[] = raw
     .map((note) => {
-      const start = ticksToSeconds(note.tick, tempos, tpq) * scale;
-      const stop = ticksToSeconds(note.end, tempos, tpq) * scale;
+      const start = note.tick * secondsPerTick;
+      const stop = note.end * secondsPerTick;
       return {
         time: start,
         duration: Math.max(0.05, stop - start),
         note: note.note,
         velocity: note.velocity,
         track: note.track,
+        channel: note.channel,
       };
     })
     .sort((a, b) => a.time - b.time || a.note - b.note);
   const duration = notes.reduce((max, note) => Math.max(max, note.time + note.duration), 0);
-  return { notes, duration, midiBpm };
+  return { notes, duration, midiBpm: bpm };
 }
 
 export function bytesFromBase64(b64: string) {

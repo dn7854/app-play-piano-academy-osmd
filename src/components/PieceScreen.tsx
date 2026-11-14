@@ -151,7 +151,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
     };
   }, [collection, id]);
 
-  const pieceBpm = score?.bpm || piece?.tempo || 120;
+  const pieceBpm = piece?.tempo || score?.bpm || 120;
   const stepNotes = useMemo(() => (score ? notesFromEmbed(score.notes) : []), [score]);
   const notes: TimedNote[] = stepNotes.length ? stepNotes : cached?.midiNotes ?? [];
   const duration = Math.max(
@@ -178,14 +178,23 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   });
 
   const midiNotes = cached?.midiNotes ?? [];
-  const visibleNotes = useMemo<TimedNote[]>(() => {
-    if (!midiNotes.length) return notes;
+  const visibleNotes = useMemo(() => {
+    if (!midiNotes.length) return notes.map((node) => ({ ...node, hand: "right" as const }));
     return midiNotes
-      .filter((node) => (node.track === 0 ? showRight : node.track === 1 ? showLeft : false))
-      .map((node) => ({ time: node.time, duration: node.duration, note: node.note }));
+      .filter((node) => (node.channel === 0 ? showRight : node.channel === 1 ? showLeft : false))
+      .map((node) => ({
+        time: node.time,
+        duration: node.duration,
+        note: node.note,
+        hand: (node.channel === 0 ? "right" : "left") as "right" | "left",
+      }));
   }, [midiNotes, notes, showLeft, showRight]);
-  const visibleActive = useMemo(
-    () => (playMode ? soundingNotes(visibleNotes, playback.scoreTime) : []),
+  const activeRight = useMemo(
+    () => (playMode ? soundingNotes(visibleNotes.filter((node) => node.hand === "right"), playback.scoreTime) : []),
+    [playMode, visibleNotes, playback.scoreTime],
+  );
+  const activeLeft = useMemo(
+    () => (playMode ? soundingNotes(visibleNotes.filter((node) => node.hand === "left"), playback.scoreTime) : []),
     [playMode, visibleNotes, playback.scoreTime],
   );
   const visibleWaiting = playback.waiting.filter((midiNo) => visibleNotes.some((node) => node.note === midiNo));
@@ -390,7 +399,8 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             <KeyboardDock
               notes={visibleNotes}
               scoreTime={playback.scoreTime}
-              active={visibleActive}
+              activeRight={activeRight}
+              activeLeft={activeLeft}
               waiting={visibleWaiting}
               success={playback.success}
               wrong={playback.wrong}

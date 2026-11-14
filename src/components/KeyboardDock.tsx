@@ -41,7 +41,8 @@ function xOf(layout: ReturnType<typeof layoutKeys>, midi: number, whiteW: number
 export function KeyboardDock({
   notes,
   scoreTime,
-  active,
+  activeRight,
+  activeLeft,
   waiting,
   success,
   wrong,
@@ -51,9 +52,10 @@ export function KeyboardDock({
   waitMode,
   onKey,
 }: {
-  notes: TimedNote[];
+  notes: (TimedNote & { hand?: "right" | "left" })[];
   scoreTime: number;
-  active: number[];
+  activeRight: number[];
+  activeLeft: number[];
   waiting: number[];
   success: number[];
   wrong: number[];
@@ -103,13 +105,15 @@ export function KeyboardDock({
 
   function keyStyle(midi: number, black: boolean) {
     const isWait = waiting.includes(midi);
-    const isOn = active.includes(midi);
+    const isRight = activeRight.includes(midi);
+    const isLeft = activeLeft.includes(midi);
     const isOk = success.includes(midi);
     const isBad = wrong.includes(midi);
     if (isWait) return { backgroundColor: black ? "#059669" : "#34d399", shadowColor: "#34d399" };
     if (isOk) return { backgroundColor: black ? "#10b981" : "#6ee7b7", shadowColor: "#6ee7b7" };
     if (tapped === midi || isBad) return { backgroundColor: black ? "#ea580c" : "#fb923c", shadowColor: "#f97316" };
-    if (isOn) return { backgroundColor: black ? "#4f46e5" : "#818cf8", shadowColor: "#6366f1" };
+    if (isRight) return { backgroundColor: black ? "#0284c7" : "#7dd3fc", shadowColor: "#38bdf8" };
+    if (isLeft) return { backgroundColor: black ? "#4f46e5" : "#818cf8", shadowColor: "#6366f1" };
     return null;
   }
 
@@ -153,9 +157,9 @@ export function KeyboardDock({
                           top,
                           width,
                           height,
-                          backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : "rgba(99,102,241,0.92)",
-                          shadowColor: waitingNote ? "#34d399" : "#6366f1",
-                          borderColor: waitingNote ? "#d1fae5" : "#e0e7ff",
+                          backgroundColor: waitingNote ? "rgba(52,211,153,0.92)" : note.hand === "left" ? "rgba(99,102,241,0.92)" : "rgba(56,189,248,0.92)",
+                          shadowColor: waitingNote ? "#34d399" : note.hand === "left" ? "#6366f1" : "#38bdf8",
+                          borderColor: waitingNote ? "#d1fae5" : note.hand === "left" ? "#e0e7ff" : "#e0f2fe",
                         },
                       ]}
                     />
@@ -179,7 +183,7 @@ export function KeyboardDock({
                     lit,
                   ]}
                 >
-                  {(waiting.includes(key.midi) || active.includes(key.midi)) && (
+                  {(waiting.includes(key.midi) || activeRight.includes(key.midi) || activeLeft.includes(key.midi)) && (
                     <Text style={styles.noteName}>{NAMES[key.midi % 12].replace("#", "")}</Text>
                   )}
                 </Pressable>

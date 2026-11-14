@@ -73,17 +73,17 @@ function Toggle({
   title: string;
   detail: string;
   on: boolean;
-  tone: "sky" | "green";
+  tone: "sky" | "green" | "indigo";
   onPress: () => void;
 }) {
-  const active = tone === "green" ? "#059669" : "#0284c7";
+  const active = tone === "green" ? "#059669" : tone === "indigo" ? "#4f46e5" : "#0284c7";
   return (
     <Pressable onPress={onPress} style={[styles.toggle, on && { backgroundColor: active, borderColor: active }]}>
       <View style={{ flex: 1 }}>
         <Text style={[styles.toggleTitle, on && styles.onText]}>{title}</Text>
         <Text style={[styles.toggleDetail, on && styles.onText]}>{detail}</Text>
       </View>
-      <View style={[styles.dot, { backgroundColor: on ? "#fff" : tone === "green" ? "#34d399" : "#38bdf8" }]} />
+      <View style={[styles.dot, { backgroundColor: on ? "#fff" : tone === "green" ? "#34d399" : tone === "indigo" ? "#6366f1" : "#38bdf8" }]} />
     </Pressable>
   );
 }
@@ -193,11 +193,12 @@ export function SidePanel({
             })}
           </View>
         </View>
-        <Text style={styles.section}>Keyboard tracks</Text>
-        <Toggle title="Right hand" detail="First MIDI track, shown on the keyboard." on={showRight} tone="sky" onPress={onRight} />
-        <Toggle title="Left hand" detail="Second MIDI track, shown on the keyboard." on={showLeft} tone="green" onPress={onLeft} />
+        <Text style={styles.section}>Play mode</Text>
         <Toggle title="Play mode" detail="The backing track plays. Sample piano notes stay off." on={playMode} tone="sky" onPress={onPlayMode} />
         <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
+        <Text style={styles.section}>Keyboard tracks</Text>
+        <Toggle title="Right hand" detail="First MIDI channel, shown in sky on the keyboard." on={showRight} tone="sky" onPress={onRight} />
+        <Toggle title="Left hand" detail="Second MIDI channel, shown in indigo on the keyboard." on={showLeft} tone="indigo" onPress={onLeft} />
         <View style={styles.sliderBlock}>
           <View style={styles.sliderHead}>
             <Text style={styles.section}>Score zoom</Text>
