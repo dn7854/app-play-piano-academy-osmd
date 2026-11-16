@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "D8R Piano Academy",
-    "slug": "play-piano-academy-mobile",
+    "slug": "d8r-piano-academy",
     "owner": "danijelbrecelj",
     "scheme": "d8rpianoacademy",
     "version": "2.0.0",
@@ -62,6 +62,7 @@
           "disableFFmpeg": true
         }
       ],
+      "./plugins/withKotlinTarget",
       "./plugins/withAndroidReleaseFixes"
     ],
     "experiments": {
@@ -70,7 +71,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "89373633-4faa-4f40-8993-38a5b342e2c3"
+        "projectId": "c1d6ce80-c702-438e-b6bf-36dd70fc7452"
       }
     }
   }

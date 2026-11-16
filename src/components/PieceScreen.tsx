@@ -339,8 +339,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>{piece.title}</Text>
           <Text style={styles.headerSub} numberOfLines={1}>
-            {piece.composer || "Piano"}
-            {piece.isPremium && !pro ? ` · ${config.previewSeconds}s preview` : ""}
+            {piece.composer || "D8R Piano"}
             {offline ? " · Saved on device" : ""}
           </Text>
         </View>

@@ -139,11 +139,11 @@ export function SidePanel({
           </View>
         </View>
         <Text style={styles.section}>Play mode</Text>
-        <Toggle title="Play mode" detail="The backing track plays. Sample piano notes stay off." on={playMode} tone="sky" onPress={onPlayMode} />
-        <Toggle title="Wait to play" detail="The piece holds until you play one of the green notes." on={waitMode} tone="green" onPress={onWait} />
+        <Toggle title="Play mode" detail="Play along the piano or orchestra backing track." on={playMode} tone="sky" onPress={onPlayMode} />
+        <Toggle title="Wait to play" detail="The piece waits for you to play the right notes." on={waitMode} tone="green" onPress={onWait} />
         <Text style={styles.section}>Keyboard tracks</Text>
-        <Toggle title="Right hand" detail="First MIDI channel, shown in sky on the keyboard." on={showRight} tone="sky" onPress={onRight} />
-        <Toggle title="Left hand" detail="Second MIDI channel, shown in indigo on the keyboard." on={showLeft} tone="indigo" onPress={onLeft} />
+        <Toggle title="Right hand" detail="Shows notes for the right hand" on={showRight} tone="sky" onPress={onRight} />
+        <Toggle title="Left hand" detail="Shows notes for the left hand" on={showLeft} tone="indigo" onPress={onLeft} />
         <View style={styles.sliderBlock}>
           <View style={styles.sliderHead}>
             <Text style={styles.section}>Score zoom</Text>
