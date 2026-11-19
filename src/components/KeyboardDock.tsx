@@ -259,6 +259,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     alignItems: "center",
     paddingBottom: 6,
+    zIndex: 1,
+    elevation: 0,
   },
   black: {
     position: "absolute",
@@ -266,12 +268,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderBottomRightRadius: 4,
     zIndex: 2,
+    // Android paints elevation above zIndex. White keys stay at 0 so a highlight cannot cover these.
+    elevation: 8,
   },
   lit: {
     shadowOpacity: 1,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
   },
   noteName: { fontFamily: fonts.bold, fontSize: 10, color: "#0f172a" },
 });

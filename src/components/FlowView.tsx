@@ -21,6 +21,13 @@ function lineCount(tileCount: number, tablet: boolean) {
   return 1;
 }
 
+function levelLabel(section: FlowSection, index: number) {
+  const match = /(\d+)\s*$/.exec(section.title);
+  const n = match?.[1] ?? String(index + 1);
+  const detail = section.description?.trim();
+  return detail ? `LEVEL (${n}) - ${detail}` : `LEVEL (${n})`;
+}
+
 function chunk<T>(items: T[], parts: number): T[][] {
   if (parts <= 1) return [items];
   const size = Math.ceil(items.length / parts);
@@ -40,15 +47,9 @@ export function FlowView({ sections, onOpen }: { sections: FlowSection[]; onOpen
         const rows = chunk(section.tiles, lineCount(section.tiles.length, tablet));
         return (
           <View key={section.id} style={styles.section}>
-            <View style={styles.head}>
-              <View style={styles.step}>
-                <Text style={styles.stepText}>{index + 1}</Text>
-              </View>
-              <View style={styles.headText}>
-                <Text style={styles.sectionTitle}>{section.title}</Text>
-                {section.description ? <Text style={styles.sectionBody}>{section.description}</Text> : null}
-              </View>
-            </View>
+            <Text style={styles.sectionTitle} numberOfLines={1}>
+              {levelLabel(section, index)}
+            </Text>
             <View style={styles.lines}>
               {rows.map((row, rowIndex) => (
                 <ScrollView
@@ -127,21 +128,7 @@ function Cover({ uri }: { uri: string | null }) {
 const styles = StyleSheet.create({
   sections: { gap: 26 },
   section: { gap: 10, backgroundColor: "#0b2230", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 18, padding: 14 },
-  head: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  step: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0b2230",
-    borderWidth: 1,
-    borderColor: dark.cardEdge,
-  },
-  stepText: { fontFamily: fonts.bold, color: dark.sky, fontSize: 13 },
-  headText: { flex: 1, gap: 2 },
-  sectionTitle: { fontFamily: fonts.bold, color: dark.fg, fontSize: 20 },
-  sectionBody: { fontFamily: fonts.regular, color: dark.muted, fontSize: 14, lineHeight: 20 },
+  sectionTitle: { fontFamily: fonts.bold, color: dark.fg, fontSize: 18, lineHeight: 24 },
   lines: { gap: 10 },
   scroller: { minHeight: 76 },
   row: { gap: TILE_GAP, paddingRight: 4 },

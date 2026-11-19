@@ -3,6 +3,7 @@ import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { installDiagnostics } from "../src/lib/diagnostics";
 import { PurchasesProvider } from "../src/purchases";
@@ -26,7 +27,7 @@ export default function RootLayout() {
 
   return (
     <PurchasesProvider>
-      <StatusBar style="auto" />
+      <StatusBar style="light" hidden={Platform.OS === "android"} />
       <Stack screenOptions={{ headerShown: false, animation: "fade" }} />
     </PurchasesProvider>
   );

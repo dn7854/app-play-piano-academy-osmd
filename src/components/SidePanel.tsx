@@ -34,8 +34,6 @@ function Toggle({
 }
 
 export function SidePanel({
-  title,
-  composer,
   playMode,
   waitMode,
   bpm,
@@ -70,8 +68,6 @@ export function SidePanel({
   onLeft,
   onClose,
 }: {
-  title: string;
-  composer: string | null;
   playMode: boolean;
   waitMode: boolean;
   bpm: number;
@@ -111,20 +107,21 @@ export function SidePanel({
   const [sensLabel, setSensLabel] = useState(sensitivity);
   useEffect(() => setZoomLabel(zoom), [zoom]);
   useEffect(() => setSensLabel(sensitivity), [sensitivity]);
+  const closeTop = insets.top + studioNav.padB;
+  const closeRight = insets.right + studioNav.padH;
   return (
     <View style={styles.panel}>
-      <View style={[styles.head, { paddingTop: insets.top }]}>
-        <View style={styles.headText}>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
-          <Text style={styles.composer} numberOfLines={1}>{composer || "Piano"}</Text>
-        </View>
-        {onClose ? (
-          <Pressable onPress={onClose} style={styles.close} accessibilityLabel="Close studio panel">
-            <Text style={styles.closeText}>✕</Text>
-          </Pressable>
-        ) : null}
-      </View>
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.body,
+          {
+            paddingTop: closeTop + studioNav.icon + 14,
+            paddingLeft: 16,
+            paddingRight: 16 + insets.right,
+            paddingBottom: 32 + insets.bottom,
+          },
+        ]}
+      >
         <View style={styles.sliderBlock}>
           <Text style={styles.section}>View</Text>
           <View style={styles.modes}>
@@ -234,24 +231,23 @@ export function SidePanel({
           </>
         ) : null}
       </ScrollView>
+      {onClose ? (
+        <Pressable
+          onPress={onClose}
+          style={[styles.close, { top: closeTop, right: closeRight }]}
+          accessibilityLabel="Close studio panel"
+        >
+          <Text style={styles.closeText}>✕</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   panel: { flex: 1, backgroundColor: light.bg },
-  head: {
-    paddingHorizontal: studioNav.padH,
-    paddingBottom: studioNav.padB,
-    backgroundColor: studioNav.bg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headText: { flex: 1, justifyContent: "center" },
-  title: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, color: studioNav.title },
-  composer: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, color: studioNav.muted },
   close: {
+    position: "absolute",
     width: studioNav.icon,
     height: studioNav.icon,
     borderRadius: studioNav.icon / 2,
@@ -260,9 +256,19 @@ const styles = StyleSheet.create({
     backgroundColor: studioNav.button,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 5,
+    elevation: 6,
   },
-  closeText: { fontFamily: fonts.bold, color: studioNav.title, fontSize: 16, marginTop: -1 },
-  body: { padding: 16, gap: 10, paddingBottom: 32 },
+  closeText: {
+    fontFamily: fonts.bold,
+    color: studioNav.title,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+  },
+  body: { gap: 10 },
   toggle: { borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff", borderRadius: 16, padding: 12, flexDirection: "row", alignItems: "center", gap: 8 },
   toggleTitle: { fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase", color: light.ink },
   toggleDetail: { fontFamily: fonts.regular, fontSize: 12, color: light.muted, marginTop: 2 },

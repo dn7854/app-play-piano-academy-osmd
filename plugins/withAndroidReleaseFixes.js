@@ -14,9 +14,9 @@
  *    and adds that folder to the app's jniLibs before any native-lib merge. No
  *    binaries are committed.
  *
- * 3. Navigation bar matches the dark app background (#100e0c) with light buttons.
- *    Expo's template leaves enforceNavigationBarContrast on, so Android 10+ paints
- *    a white or grey scrim behind the gesture bar.
+ * 3. System bars stay transparent and the window draws into the display cutout.
+ *    Status and navigation bars are hidden from MainActivity. Expo's template
+ *    leaves enforceNavigationBarContrast on, which paints a scrim behind them.
  */
 const fs = require("fs");
 const path = require("path");
@@ -117,13 +117,16 @@ module.exports = function withAndroidReleaseFixes(config) {
     return cfg;
   });
 
-  // Same ink as colors.bg. Light buttons, no contrast scrim.
+  // Transparent bars, no contrast scrim, content may draw beside the camera cutout.
   config = withAndroidStyles(config, (cfg) => {
     const styles = cfg.modResults;
     const items = {
-      "android:navigationBarColor": "#100e0c",
+      "android:navigationBarColor": "@android:color/transparent",
+      "android:statusBarColor": "@android:color/transparent",
       "android:windowLightNavigationBar": "false",
+      "android:windowLightStatusBar": "false",
       "android:enforceNavigationBarContrast": "false",
+      "android:windowLayoutInDisplayCutoutMode": "shortEdges",
     };
     for (const [name, value] of Object.entries(items)) {
       AndroidConfig.Styles.assignStylesValue(styles, { add: true, parent: "AppTheme", name, value });

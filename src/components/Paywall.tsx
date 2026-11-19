@@ -55,7 +55,7 @@ export function Paywall({ onClose }: { onClose: () => void }) {
   return (
     <View style={styles.scrim}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close purchase" />
-      <View style={[styles.card, { marginBottom: Math.max(16, insets.bottom + 8) }]}>
+      <View style={[styles.card, { marginBottom: Math.max(16, insets.bottom + 8), marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         <Text style={styles.kicker}>PIANO ACADEMY PRO</Text>
         <Text style={styles.price}>{priceLabel ?? "One-time purchase"}</Text>
         <Text style={styles.body}>

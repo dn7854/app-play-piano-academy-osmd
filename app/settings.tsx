@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { config } from "../src/config";
 import { purchaseWasCancelled, usePurchases } from "../src/purchases";
@@ -54,8 +54,8 @@ export default function Settings() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
-      <StatusBar style="light" />
+    <View style={[styles.screen, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
+      <StatusBar style="light" hidden={Platform.OS === "android"} />
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 32 }]}>
         <View style={styles.head}>
           <Pressable style={styles.back} accessibilityLabel="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>

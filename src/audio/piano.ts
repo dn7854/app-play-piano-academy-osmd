@@ -29,7 +29,7 @@ function env(out: any, time: number, peak: number, decay: number) {
 }
 
 /** The same woodblock click as D8R Metronome & Tuner ("wood" sound). */
-function wood(time: number, strong: number, sub: boolean) {
+function wood(time: number, strong: number, sub: boolean, bucket?: Array<{ stop: (when?: number) => void }>) {
   const c = ctx as any;
   const out = clickGain;
   if (!c || !out) return;
@@ -42,6 +42,7 @@ function wood(time: number, strong: number, sub: boolean) {
   osc.connect(body);
   osc.start(time);
   osc.stop(time + 0.09);
+  bucket?.push(osc);
 
   const noise = c.createBufferSource();
   const len = Math.floor(c.sampleRate * 0.018);
@@ -58,6 +59,7 @@ function wood(time: number, strong: number, sub: boolean) {
   bp.connect(ng);
   noise.start(time);
   noise.stop(time + 0.03);
+  bucket?.push(noise);
 }
 
 /** Accented woodblock knock on beat 1, lighter knock on the other beats. */
@@ -70,4 +72,39 @@ export async function playClick(accent: boolean) {
   } catch (error) {
     recordDiagnostic("play", `count-in click failed ${diagnosticText(error)}`);
   }
+}
+
+let countInNodes: Array<{ stop: (when?: number) => void }> = [];
+
+/** Drop knocks that were scheduled and have not sounded yet. */
+export function cancelCountIn() {
+  const now = (ctx as any)?.currentTime ?? 0;
+  for (const node of countInNodes) {
+    try {
+      node.stop(now);
+    } catch {
+      // The knock already ended.
+    }
+  }
+  countInNodes = [];
+}
+
+/**
+ * Wake the audio graph, then place every count-in knock on the audio clock
+ * after `leadSeconds` of silence. The first beat is not shortened by setup.
+ * `wallNow` and `audioNow` were sampled together, so the UI can show the
+ * numbers on that same grid.
+ */
+export async function scheduleCountIn(clicks: number, gapSeconds: number, leadSeconds: number) {
+  await prepare();
+  cancelCountIn();
+  const c = ctx as any;
+  const audioNow = c.currentTime as number;
+  const wallNow = performance.now();
+  const firstAudio = audioNow + Math.max(0.05, leadSeconds);
+  const bucket: Array<{ stop: (when?: number) => void }> = [];
+  const step = Math.max(0.05, gapSeconds);
+  for (let i = 0; i < clicks; i++) wood(firstAudio + i * step, i === 0 ? 1 : 0.72, false, bucket);
+  countInNodes = bucket;
+  return { audioNow, wallNow, firstAudio };
 }

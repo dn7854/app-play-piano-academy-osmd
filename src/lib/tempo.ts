@@ -15,6 +15,16 @@ export function tempoRatio(pieceBpm: number, selectedBpm: number) {
   return clampTempo(pieceBpm, selectedBpm) / pieceBpm;
 }
 
+/**
+ * Index into backing groups. -1 is "None", and only when the piece has no track.
+ * A single track is selected even if its label is Piano.
+ */
+export function defaultBackingIndex(labels: string[]) {
+  if (labels.length === 0) return -1;
+  const orchestra = labels.findIndex((label) => !/piano/i.test(label));
+  return orchestra >= 0 ? orchestra : 0;
+}
+
 /** HTML/audio playbackRate, clamped the way the website clamps backing tracks. */
 export function backingPlaybackRate(selectedBpm: number, trackBpm: number | null) {
   if (!trackBpm || trackBpm <= 0) return tempoRatio(selectedBpm, selectedBpm);

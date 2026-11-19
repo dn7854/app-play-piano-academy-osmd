@@ -192,9 +192,10 @@ export function LibraryScreen({ slug }: { slug?: string }) {
   const showLibrarySpinner = libLoading && !pieces.length && !collections.length;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
+    <View style={styles.screen}>
+      <View style={{ flex: 1, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32, gap: 14, flexGrow: 1 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + (showSwitch ? 88 : 32), gap: 14, flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load()} tintColor={dark.sky} />}
       >
         <View style={styles.topRow}>
@@ -219,26 +220,6 @@ export function LibraryScreen({ slug }: { slug?: string }) {
         <Text style={styles.heading}>{heading}</Text>
         <Text style={styles.lede}>{lede}</Text>
         {(path ? flowFromCache : fromCache) ? <Text style={styles.cache}>Showing scores saved on this device.</Text> : null}
-        {showSwitch ? (
-          <View style={styles.switch} accessibilityRole="tablist">
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: path }}
-              onPress={() => pick("flow")}
-              style={[styles.switchItem, path && styles.switchOn]}
-            >
-              <Text style={[styles.switchText, path && styles.switchTextOn]}>Flow</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: !path }}
-              onPress={() => pick("library")}
-              style={[styles.switchItem, !path && styles.switchOn]}
-            >
-              <Text style={[styles.switchText, !path && styles.switchTextOn]}>Library</Text>
-            </Pressable>
-          </View>
-        ) : null}
         {!path && error ? (
           <View style={styles.errorBox}>
             <Text style={styles.error}>{error}</Text>
@@ -295,6 +276,30 @@ export function LibraryScreen({ slug }: { slug?: string }) {
           </>
         ) : null}
       </ScrollView>
+      </View>
+      {showSwitch ? (
+        <View
+          style={[styles.switch, styles.floatSwitch, { left: 16 + insets.left, bottom: 16 + insets.bottom }]}
+          accessibilityRole="tablist"
+        >
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: path }}
+            onPress={() => pick("flow")}
+            style={[styles.switchItem, path && styles.switchOn]}
+          >
+            <Text style={[styles.switchText, path && styles.switchTextOn]}>Flow</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: !path }}
+            onPress={() => pick("library")}
+            style={[styles.switchItem, !path && styles.switchOn]}
+          >
+            <Text style={[styles.switchText, !path && styles.switchTextOn]}>Library</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -308,13 +313,22 @@ const styles = StyleSheet.create({
   switch: {
     flexDirection: "row",
     backgroundColor: dark.card,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: dark.cardEdge,
     padding: 4,
     gap: 4,
   },
-  switchItem: { flex: 1, borderRadius: 10, paddingVertical: 8, alignItems: "center" },
+  floatSwitch: {
+    position: "absolute",
+    zIndex: 6,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  switchItem: { borderRadius: 12, paddingVertical: 8, paddingHorizontal: 16, alignItems: "center" },
   switchOn: { backgroundColor: dark.sky },
   switchText: { fontFamily: fonts.bold, color: dark.muted, fontSize: 14 },
   switchTextOn: { color: "#0f172a" },

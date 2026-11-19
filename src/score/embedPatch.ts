@@ -14,6 +14,7 @@ export const APP_SCORE_PATCH = `(function () {
   var NATURAL_W = 1152;
   var NATURAL_H = NATURAL_W * 297 / 210;
   var zoom = 1;
+  var fit = "height";
 
   function readMessage(data) {
     if (typeof data === "string") {
@@ -29,6 +30,7 @@ export const APP_SCORE_PATCH = `(function () {
       zoom = message.zoom;
       schedule();
     } else if (message.type === "setLayout") {
+      fit = message.layout === "portrait" ? "height" : "width";
       schedule();
     }
   });
@@ -57,7 +59,7 @@ export const APP_SCORE_PATCH = `(function () {
     if (!wrapW) return;
     var availW = sheet.scroller.clientWidth;
     var availH = sheet.scroller.clientHeight;
-    var desired = pageContainScale(availW, availH, NATURAL_W, NATURAL_H, zoom);
+    var desired = pageContainScale(availW, availH, NATURAL_W, NATURAL_H, zoom, fit);
     if (desired == null) return;
     var nextW = Math.floor(NATURAL_W * desired);
     var nextH = Math.floor(NATURAL_H * desired);

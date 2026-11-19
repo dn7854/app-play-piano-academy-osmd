@@ -1,7 +1,7 @@
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import {
   parseEmbedEvent,
@@ -221,7 +221,7 @@ export function ScoreWebView({
           domStorageEnabled
           allowsInlineMediaPlayback
           setSupportMultipleWindows={false}
-          style={styles.web}
+          style={[styles.web, Platform.OS === "android" ? styles.webLayer : null]}
         />
       ) : null}
       {phase !== "ready" ? (
@@ -245,6 +245,8 @@ export function ScoreWebView({
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: light.stage },
   web: { flex: 1, backgroundColor: light.stage },
+  // Keeps later native overlays, including the countdown, painted above the WebView on Android.
+  webLayer: { opacity: 0.99 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

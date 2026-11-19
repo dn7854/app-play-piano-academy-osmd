@@ -1,6 +1,6 @@
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playClick } from "../audio/piano";
+import { cancelCountIn, playClick, scheduleCountIn } from "../audio/piano";
 import { playPianoNote } from "../hooks/usePianoSound";
 import { isPreviewLocked } from "../lib/preview-limit";
 import { nextEventTime, soundingNotes, waitingNotes, type TimedNote } from "../lib/notes";
@@ -12,6 +12,7 @@ export type BackingTrack = { uri: string; bpm: number | null };
 type Snap = {
   scoreTime: number;
   playing: boolean;
+  arming: boolean;
   countdown: number | null;
   active: number[];
   waiting: number[];
@@ -37,6 +38,7 @@ function quietly(label: string, action: () => void | Promise<unknown>) {
 const empty: Snap = {
   scoreTime: 0,
   playing: false,
+  arming: false,
   countdown: null,
   active: [],
   waiting: [],
@@ -45,6 +47,9 @@ const empty: Snap = {
   ended: false,
   correctHits: 0,
 };
+
+/** Silence after Play, so the audio graph is awake before the first knock. */
+const COUNT_IN_LEAD_SECONDS = 0.45;
 
 export function usePlayback({
   notes,
@@ -96,6 +101,7 @@ export function usePlayback({
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const frame = useRef(0);
   const correctRef = useRef(0);
+  const epoch = useRef(0);
 
   const player = useCallback(() => {
     if (playerRef.current) return playerRef.current;
@@ -143,11 +149,13 @@ export function usePlayback({
   );
 
   const stop = useCallback(() => {
+    epoch.current += 1;
     playingRef.current = false;
     for (const id of timers.current) clearTimeout(id);
     timers.current = [];
+    cancelCountIn();
     pauseBacking();
-    publish({ playing: false, countdown: null, active: [], waiting: [] }, true);
+    publish({ playing: false, arming: false, countdown: null, active: [], waiting: [] }, true);
   }, [pauseBacking, publish]);
 
   const arm = useCallback(
@@ -170,6 +178,7 @@ export function usePlayback({
       publish(
         {
           playing: true,
+          arming: false,
           countdown: null,
           ended: false,
           waiting,
@@ -210,8 +219,11 @@ export function usePlayback({
 
   const begin = useCallback(
     (fromStart: boolean) => {
+      epoch.current += 1;
+      const generation = epoch.current;
       for (const id of timers.current) clearTimeout(id);
       timers.current = [];
+      cancelCountIn();
       if (fromStart) correctRef.current = 0;
       if (!fromStart) {
         recordDiagnostic("play", `resume t=${scoreRef.current.toFixed(2)}`);
@@ -219,27 +231,60 @@ export function usePlayback({
         return;
       }
       const [clicks, quarters] = countIn(timeSignature);
-      recordDiagnostic("play", `count-in clicks=${clicks}`);
       const gap = ((60 / Math.max(1, live.current.selectedBpm)) * quarters) * 1000;
+      recordDiagnostic("play", `count-in clicks=${clicks} lead=${COUNT_IN_LEAD_SECONDS}`);
       playingRef.current = false;
-      let left = clicks;
-      const tick = () => {
-        if (left <= 0) {
-          arm(0);
-          return;
-        }
-        publish({ countdown: left, playing: false }, true);
-        void playClick(left === clicks);
-        left -= 1;
-        timers.current.push(setTimeout(tick, gap));
+      publish({ arming: true, playing: false, countdown: null }, true);
+      const loose = () => {
+        if (epoch.current !== generation) return;
+        let left = clicks;
+        const started = performance.now();
+        const tick = () => {
+          if (epoch.current !== generation) return;
+          if (left <= 0) {
+            arm(0);
+            return;
+          }
+          publish({ countdown: left, arming: false, playing: false }, true);
+          void playClick(left === clicks);
+          left -= 1;
+          const at = started + (clicks - left) * gap - performance.now();
+          timers.current.push(setTimeout(tick, Math.max(0, at)));
+        };
+        tick();
       };
-      tick();
+      void (async () => {
+        try {
+          const plan = await scheduleCountIn(clicks, gap / 1000, COUNT_IN_LEAD_SECONDS);
+          if (epoch.current !== generation) {
+            cancelCountIn();
+            return;
+          }
+          const leadMs = (plan.firstAudio - plan.audioNow) * 1000;
+          for (let i = 0; i < clicks; i++) {
+            const at = plan.wallNow + leadMs + i * gap - performance.now();
+            timers.current.push(setTimeout(() => {
+              if (epoch.current !== generation) return;
+              publish({ countdown: clicks - i, arming: false, playing: false }, true);
+            }, Math.max(0, at)));
+          }
+          const armAt = plan.wallNow + leadMs + clicks * gap - performance.now();
+          timers.current.push(setTimeout(() => {
+            if (epoch.current !== generation) return;
+            arm(0);
+          }, Math.max(0, armAt)));
+        } catch (error) {
+          recordDiagnostic("play", `count-in schedule ${diagnosticText(error)}`);
+          if (epoch.current !== generation) return;
+          timers.current.push(setTimeout(loose, COUNT_IN_LEAD_SECONDS * 1000));
+        }
+      })();
     },
     [arm, publish, timeSignature],
   );
 
   const toggle = useCallback(() => {
-    if (playingRef.current || snapRef.current.countdown != null) {
+    if (playingRef.current || snapRef.current.countdown != null || snapRef.current.arming) {
       stop();
       return;
     }

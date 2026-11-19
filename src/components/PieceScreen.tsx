@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Dimensions, Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
@@ -9,7 +9,7 @@ import * as Network from "expo-network";
 import { ApiError, fetchCollection, fetchPdfUrl, fetchPiece } from "../api/client";
 import { cachePath, cachePiece, readPieceMeta, type CachedPiece } from "../api/cache";
 import type { PieceDetail, PieceSummary } from "../api/types";
-import { KeyboardDock } from "./KeyboardDock";
+import { KeyboardDock, keyboardMetrics } from "./KeyboardDock";
 import { Paywall } from "./Paywall";
 import { SidePanel } from "./SidePanel";
 import { TempoModal } from "./TempoModal";
@@ -17,7 +17,7 @@ import { useMidiController } from "../hooks/useMidiController";
 import { recordDiagnostic } from "../lib/diagnostics";
 import { notesFromEmbed, type EmbedLayoutName, type LoadedScore } from "../lib/protocol";
 import { matchAnyExpected, soundingNotes, type TimedNote } from "../lib/notes";
-import { clampTempo } from "../lib/tempo";
+import { clampTempo, defaultBackingIndex } from "../lib/tempo";
 import { usePlayback } from "../playback/usePlayback";
 import { usePitch } from "../pitch/usePitch";
 import { usePitchSensitivity } from "../pitch/sensitivity";
@@ -52,6 +52,8 @@ function pickBacking(
   );
 }
 
+const KEY_LIP = 10;
+
 function formatTime(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
@@ -84,12 +86,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const [panel, setPanel] = useState(false);
   const [playMode, setPlayMode] = useState(true);
   const waitMode = !playMode;
-  const [zoom, setZoom] = useState(landscape ? 1.85 : 1);
-
-  useEffect(() => {
-    setZoom(landscape ? 1.85 : 1);
-  }, [landscape]);
-
+  const [zoom, setZoom] = useState(1);
   const [showRight, setShowRight] = useState(true);
   const [showLeft, setShowLeft] = useState(true);
   const [resultOpen, setResultOpen] = useState(false);
@@ -122,8 +119,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         if (cancel) return;
         setPiece(detail);
         setSelectedBpm(detail.tempo || 120);
-        const orchestra = groupBacking(detail.mp3Files).findIndex((group) => !/piano/i.test(group.label));
-        setBackingIndex(orchestra);
+        setBackingIndex(defaultBackingIndex(groupBacking(detail.mp3Files).map((group) => group.label)));
         const files = await cachePiece(detail);
         if (!cancel) setCached(files);
         if (collection) {
@@ -137,6 +133,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         if (saved && !cancel) {
           setPiece(saved);
           setSelectedBpm(saved.tempo || 120);
+          setBackingIndex(defaultBackingIndex(groupBacking(saved.mp3Files).map((group) => group.label)));
           setCached(await cachePiece(saved));
           setOffline(true);
         } else if (!cancel) {
@@ -281,8 +278,6 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const shownBpm = clampTempo(pieceBpm, selectedBpm);
   const panelNode = (
     <SidePanel
-      title={piece.title}
-      composer={piece.composer}
       playMode={playMode}
       waitMode={waitMode}
       zoom={zoom}
@@ -326,52 +321,91 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   );
 
   const counting = playback.countdown != null;
-  const transportOn = playback.playing || counting;
+  const transportOn = playback.playing || counting || playback.arming;
+  const phoneLandscape = landscape && !tablet;
+  const navTop = insets.top + studioNav.padB;
+  const navLeft = insets.left + studioNav.padH;
+  const navRight = insets.right + studioNav.padH;
+  const keyMetrics = keyboardMetrics(tablet, landscape);
+  const screen = Dimensions.get("screen");
+  const bleedX = Math.max(48, (screen.width - width) / 2 + 24);
+  const bleedY = Math.max(48, (screen.height - height) / 2 + 24);
+
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace("/"));
+  const scoreShown = showsScore(viewMode);
+  const keysShown = showsKeyboard(viewMode);
 
   return (
     <View style={styles.screen}>
-      <StatusBar style="light" />
-      <View style={{ flex: 1 }}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.iconBtn} accessibilityLabel="Back to the library">
-          <Text style={styles.iconText}>‹</Text>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{piece.title}</Text>
-          <Text style={styles.headerSub} numberOfLines={1}>
-            {piece.composer || "D8R Piano"}
-            {offline ? " · Saved on device" : ""}
-          </Text>
-        </View>
-        <Pressable onPress={() => setPanel(true)} style={styles.iconBtn} accessibilityLabel="Open studio panel">
-          <Text style={styles.iconText}>☰</Text>
-        </Pressable>
-      </View>
-      <View style={{ flex: 1 }}>
-        <View style={styles.stage}>
-          <View
-            pointerEvents={showsScore(viewMode) ? "auto" : "none"}
-            style={showsScore(viewMode) ? styles.score : styles.scoreParked}
-          >
-            <ScoreWebView
-              pieceId={piece.id}
-              remoteXmlUrl={piece.musicXmlUrl}
-              xmlText={cached?.xmlText ?? null}
-              offline={offline}
-              scoreTime={playback.scoreTime}
-              bpm={pieceBpm}
-              timeSignature={piece.timeSignature}
-              keySignature={piece.keySignature}
-              measuresPerSystem={piece.measuresPerSystem}
-              playing={playback.playing}
-              waitMode={waitMode}
-              layout={(landscape ? (tablet ? "landscape-tablet" : "landscape-phone") : "portrait") satisfies EmbedLayoutName}
-              zoom={zoom}
-              onLoaded={setScore}
-              onNoteTapped={(tap) => playback.seek(tap.time, playback.playing)}
-            />
+      <StatusBar style="light" hidden={Platform.OS === "android"} />
+      {phoneLandscape ? (
+        <>
+          <Pressable onPress={goBack} style={[styles.iconBtn, styles.floatNav, { top: navTop, left: navLeft }]} accessibilityLabel="Back to the library">
+            <Text style={styles.iconText}>‹</Text>
+          </Pressable>
+          <Pressable onPress={() => setPanel(true)} style={[styles.iconBtn, styles.floatNav, { top: navTop, right: navRight }]} accessibilityLabel="Open studio panel">
+            <Text style={styles.iconText}>☰</Text>
+          </Pressable>
+        </>
+      ) : (
+        <View style={[styles.header, { paddingTop: insets.top, paddingLeft: navLeft, paddingRight: navRight }]}>
+          <View style={styles.navRow}>
+            <Pressable onPress={goBack} style={styles.iconBtn} accessibilityLabel="Back to the library">
+              <Text style={styles.iconText}>‹</Text>
+            </Pressable>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle} numberOfLines={1}>{piece.title}</Text>
+              <Text style={styles.headerSub} numberOfLines={1}>
+                {piece.composer || "D8R Piano"}
+                {offline ? " · Saved on device" : ""}
+              </Text>
+            </View>
+            <Pressable onPress={() => setPanel(true)} style={styles.iconBtn} accessibilityLabel="Open studio panel">
+              <Text style={styles.iconText}>☰</Text>
+            </Pressable>
           </View>
-          <View style={styles.seek}>
+        </View>
+      )}
+      <View style={styles.column}>
+        <View
+          pointerEvents={scoreShown ? "auto" : "none"}
+          style={scoreShown ? [
+            styles.score,
+            {
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
+              paddingTop: phoneLandscape ? insets.top + studioNav.icon + studioNav.padB * 2 : 0,
+              backgroundColor: light.stage,
+            },
+          ] : styles.scoreParked}
+        >
+          <ScoreWebView
+            pieceId={piece.id}
+            remoteXmlUrl={piece.musicXmlUrl}
+            xmlText={cached?.xmlText ?? null}
+            offline={offline}
+            scoreTime={playback.scoreTime}
+            bpm={pieceBpm}
+            timeSignature={piece.timeSignature}
+            keySignature={piece.keySignature}
+            measuresPerSystem={piece.measuresPerSystem}
+            playing={playback.playing}
+            waitMode={waitMode}
+            layout={(landscape ? (tablet ? "landscape-tablet" : "landscape-phone") : "portrait") satisfies EmbedLayoutName}
+            zoom={zoom}
+            onLoaded={setScore}
+            onNoteTapped={(tap) => playback.seek(tap.time, playback.playing)}
+          />
+        </View>
+        {scoreShown ? (
+          <View style={[
+            styles.seek,
+            {
+              paddingLeft: 10 + insets.left,
+              paddingRight: 10 + insets.right,
+              paddingBottom: keysShown ? 6 : KEY_LIP + insets.bottom,
+            },
+          ]}>
             <Pressable onPress={playback.toggle} style={styles.play} accessibilityLabel={transportOn ? "Pause" : "Play"}>
               <PlayMark playing={transportOn} />
             </Pressable>
@@ -393,8 +427,17 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             />
             <Text style={styles.time}>{formatTime(duration)}</Text>
           </View>
-          {pdfError ? <Text style={styles.pdfError}>{pdfError}</Text> : null}
-          {showsKeyboard(viewMode) ? (
+        ) : null}
+        {pdfError ? <Text style={[styles.pdfError, { paddingLeft: 12 + insets.left }]}>{pdfError}</Text> : null}
+        {keysShown ? (
+          <View style={[
+            scoreShown ? styles.keyWrap : styles.keyWrapFill,
+            {
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
+              paddingBottom: KEY_LIP + insets.bottom,
+            },
+          ]}>
             <KeyboardDock
               notes={visibleNotes}
               scoreTime={playback.scoreTime}
@@ -405,18 +448,21 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
               wrong={playback.wrong}
               tablet={tablet}
               landscape={landscape}
-              waterfall={!showsScore(viewMode)}
+              waterfall={!scoreShown}
               waitMode={waitMode}
               onKey={(note) => playback.onNote(note, "key")}
             />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
-      </View>
-      {counting ? (
-        <View pointerEvents="none" style={styles.countdown}>
-          <Text style={[styles.countdownNum, { fontSize: Math.min(168, Math.round(width * 0.42)) }]}>{playback.countdown}</Text>
-        </View>
+      {!scoreShown ? (
+        <Pressable
+          onPress={playback.toggle}
+          accessibilityLabel={transportOn ? "Pause" : "Play"}
+          style={[styles.play, styles.floatPlay, { left: 16 + insets.left, bottom: keyMetrics.keyH + KEY_LIP + insets.bottom + 16 }]}
+        >
+          <PlayMark playing={transportOn} />
+        </Pressable>
       ) : null}
       {panel ? (
         <View style={styles.overlay}>
@@ -437,23 +483,33 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
       </Modal>
       <TempoModal visible={tempoOpen} pieceBpm={pieceBpm} bpm={shownBpm} onChange={setSelectedBpm} onClose={() => setTempoOpen(false)} />
       {paywall ? <Paywall onClose={() => setPaywall(false)} /> : null}
+      {counting ? (
+        <View
+          pointerEvents="none"
+          collapsable={false}
+          style={[styles.countdown, { top: -bleedY, left: -bleedX, width: width + bleedX * 2, height: height + bleedY * 2 }]}
+        >
+          <Text style={[styles.countdownNum, { fontSize: Math.min(168, Math.round(width * 0.42)) }]}>{playback.countdown}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: light.bg },
+  screen: { flex: 1, backgroundColor: light.bg, overflow: "visible" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: light.bg, padding: 24, gap: 12 },
-  header: {
+  column: { flex: 1 },
+  header: { backgroundColor: studioNav.bg, zIndex: 8, elevation: 8 },
+  navRow: {
+    minHeight: studioNav.icon,
+    paddingTop: studioNav.padB,
+    paddingBottom: studioNav.padB,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: studioNav.padH,
-    paddingBottom: studioNav.padB,
-    backgroundColor: studioNav.bg,
-    zIndex: 8,
-    elevation: 8,
   },
+  headerText: { flex: 1, justifyContent: "center" },
   headerTitle: { fontFamily: fonts.bold, color: studioNav.title, fontSize: 16, lineHeight: 20 },
   headerSub: { fontFamily: fonts.medium, color: studioNav.muted, fontSize: 12, lineHeight: 16 },
   iconBtn: {
@@ -466,11 +522,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconText: { fontFamily: fonts.bold, fontSize: 20, color: studioNav.title, marginTop: -2 },
-  stage: { flex: 1, overflow: "hidden" },
+  floatNav: { position: "absolute", zIndex: 16, elevation: 16 },
+  iconText: {
+    fontFamily: fonts.bold,
+    fontSize: 20,
+    lineHeight: 22,
+    color: studioNav.title,
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+  },
   score: { flex: 1, zIndex: 1 },
   scoreParked: { position: "absolute", width: "100%", height: 1, opacity: 0, overflow: "hidden", zIndex: 0 },
-  seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: light.bg, zIndex: 6, elevation: 6 },
+  seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, backgroundColor: light.bg, zIndex: 6, elevation: 6 },
+  keyWrap: { backgroundColor: "#070b12" },
+  keyWrapFill: { flex: 1, backgroundColor: "#05080f" },
+  floatPlay: { position: "absolute", zIndex: 12, elevation: 12, width: 56, height: 56, borderRadius: 28 },
   play: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" },
   playMark: {
     width: 0,
@@ -486,9 +553,9 @@ const styles = StyleSheet.create({
   pauseMark: { flexDirection: "row", alignItems: "center", gap: 4 },
   pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: "#fff" },
   countdown: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 20,
-    elevation: 20,
+    position: "absolute",
+    zIndex: 80,
+    elevation: 80,
     backgroundColor: "rgba(0,0,0,0.4)",
     alignItems: "center",
     justifyContent: "center",

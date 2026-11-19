@@ -3,7 +3,7 @@ import { parseMidi } from "./midi";
 import { notesFromEmbed, osmdHalfToneToMidi, parseEmbedCommand, parseEmbedEvent, protocolCompatible, PROTOCOL_VERSION, wholeToSeconds } from "./protocol";
 import { pageContainScale } from "./embedScale";
 import { matchAnyExpected, openingAnchor, waitingNotes } from "./notes";
-import { clampTempo, tempoBounds } from "./tempo";
+import { clampTempo, defaultBackingIndex, tempoBounds } from "./tempo";
 import { gateForSensitivity } from "./pitch";
 import { sessionAttempts } from "../audio/sessionProfile";
 import { parseStudioView, showsKeyboard, showsScore } from "./studioView";
@@ -95,6 +95,15 @@ assert(grown != null && Math.abs(grown - 2) < 1e-9, "page can grow to fill a lar
 const zoomed = pageContainScale(800, 400, 1152, naturalH, 2);
 assert(zoomed != null && byHeight != null && Math.abs(zoomed - byHeight * 2) < 1e-9, "page keeps the zoom");
 assert(pageContainScale(10, 400, 1152, naturalH, 1) == null, "page ignores a tiny slot");
+const fitWidth = pageContainScale(800, 400, 1152, naturalH, 1, "width");
+assert(fitWidth != null && Math.abs(fitWidth - 800 / 1152) < 1e-9, "landscape base is fit width");
+const fitHeight = pageContainScale(800, 400, 1152, naturalH, 1, "height");
+assert(fitHeight != null && Math.abs(fitHeight - 400 / naturalH) < 1e-9, "portrait base is fit height");
+assert(defaultBackingIndex([]) === -1, "no backing stays none");
+assert(defaultBackingIndex(["Piano"]) === 0, "one piano track is selected");
+assert(defaultBackingIndex(["Orchestra"]) === 0, "one orchestra track is selected");
+assert(defaultBackingIndex(["Piano", "Orchestra"]) === 1, "orchestra wins over piano");
+assert(defaultBackingIndex(["Piano", "Piano 2"]) === 0, "all-piano picks the first");
 
 assert(isPreviewLocked(true, PREVIEW_SECONDS), "preview locks at 20");
 assert(!isPreviewLocked(false, 30), "free piece");
