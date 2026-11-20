@@ -279,7 +279,7 @@ export function LibraryScreen({ slug }: { slug?: string }) {
       </View>
       {showSwitch ? (
         <View
-          style={[styles.switch, styles.floatSwitch, { left: 16 + insets.left, bottom: 16 + insets.bottom }]}
+          style={[styles.switch, styles.floatSwitch, { right: 16 + insets.right, bottom: 16 + insets.bottom }]}
           accessibilityRole="tablist"
         >
           <Pressable

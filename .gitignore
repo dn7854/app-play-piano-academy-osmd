@@ -14,3 +14,7 @@ android/
 *.orig.*
 .DS_Store
 npm-debug.log*
+
+# Release signing credentials (never commit)
+credentials.json
+*.keystore

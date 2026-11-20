@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import type { PieceSummary } from "../api/types";
@@ -103,21 +103,30 @@ export function SidePanel({
   onClose?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const [zoomLabel, setZoomLabel] = useState(zoom);
   const [sensLabel, setSensLabel] = useState(sensitivity);
   useEffect(() => setZoomLabel(zoom), [zoom]);
   useEffect(() => setSensLabel(sensitivity), [sensitivity]);
+  const phoneLandscape = width > height && !tablet;
+  // Phone landscape often reports the cutout on one side only. Use the larger side for the right edge.
+  const edgeRight = phoneLandscape ? Math.max(insets.left, insets.right) : insets.right;
   const closeTop = insets.top + studioNav.padB;
-  const closeRight = insets.right + studioNav.padH;
+  const closeRight = edgeRight + studioNav.padH;
   return (
     <View style={styles.panel}>
+      <View style={[styles.head, { paddingTop: insets.top, paddingRight: closeRight + studioNav.icon + 8 }]}>
+        <View style={styles.headRow}>
+          <Text style={styles.headTitle} numberOfLines={1}>Settings</Text>
+        </View>
+      </View>
       <ScrollView
         contentContainerStyle={[
           styles.body,
           {
-            paddingTop: closeTop + studioNav.icon + 14,
+            paddingTop: 16,
             paddingLeft: 16,
-            paddingRight: 16 + insets.right,
+            paddingRight: 16 + edgeRight,
             paddingBottom: 32 + insets.bottom,
           },
         ]}
@@ -246,6 +255,15 @@ export function SidePanel({
 
 const styles = StyleSheet.create({
   panel: { flex: 1, backgroundColor: light.bg },
+  head: { backgroundColor: studioNav.bg },
+  headRow: {
+    minHeight: studioNav.icon,
+    paddingTop: studioNav.padB,
+    paddingBottom: studioNav.padB,
+    paddingLeft: 16,
+    justifyContent: "center",
+  },
+  headTitle: { fontFamily: fonts.bold, color: studioNav.title, fontSize: 16, lineHeight: 20 },
   close: {
     position: "absolute",
     width: studioNav.icon,

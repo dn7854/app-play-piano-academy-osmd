@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { config } from "../config";
 import { purchaseWasCancelled, usePurchases } from "../purchases";
@@ -53,7 +53,8 @@ export function Paywall({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <View style={styles.scrim}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <View style={styles.scrim}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close purchase" />
       <View style={[styles.card, { marginBottom: Math.max(16, insets.bottom + 8), marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         <Text style={styles.kicker}>PIANO ACADEMY PRO</Text>
@@ -74,12 +75,13 @@ export function Paywall({ onClose }: { onClose: () => void }) {
           <Text style={styles.restoreText}>{busy === "restore" ? "Restoring…" : "Restore purchase"}</Text>
         </Pressable>
       </View>
-    </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  scrim: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.45)" },
+  scrim: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.45)" },
   card: {
     marginHorizontal: 16,
     borderRadius: 28,

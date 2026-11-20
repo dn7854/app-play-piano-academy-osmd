@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Dimensions, Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
@@ -323,31 +323,22 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
   const counting = playback.countdown != null;
   const transportOn = playback.playing || counting || playback.arming;
   const phoneLandscape = landscape && !tablet;
+  // The cutout is often reported on one side only. Phone landscape uses that larger inset on the right too.
+  const edgeRight = phoneLandscape ? Math.max(insets.left, insets.right) : insets.right;
   const navTop = insets.top + studioNav.padB;
   const navLeft = insets.left + studioNav.padH;
-  const navRight = insets.right + studioNav.padH;
+  const navRight = edgeRight + studioNav.padH;
   const keyMetrics = keyboardMetrics(tablet, landscape);
-  const screen = Dimensions.get("screen");
-  const bleedX = Math.max(48, (screen.width - width) / 2 + 24);
-  const bleedY = Math.max(48, (screen.height - height) / 2 + 24);
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace("/"));
   const scoreShown = showsScore(viewMode);
   const keysShown = showsKeyboard(viewMode);
+  const stageBleed = landscape && scoreShown;
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, stageBleed && styles.stageBleed]}>
       <StatusBar style="light" hidden={Platform.OS === "android"} />
-      {phoneLandscape ? (
-        <>
-          <Pressable onPress={goBack} style={[styles.iconBtn, styles.floatNav, { top: navTop, left: navLeft }]} accessibilityLabel="Back to the library">
-            <Text style={styles.iconText}>‹</Text>
-          </Pressable>
-          <Pressable onPress={() => setPanel(true)} style={[styles.iconBtn, styles.floatNav, { top: navTop, right: navRight }]} accessibilityLabel="Open studio panel">
-            <Text style={styles.iconText}>☰</Text>
-          </Pressable>
-        </>
-      ) : (
+      {phoneLandscape ? null : (
         <View style={[styles.header, { paddingTop: insets.top, paddingLeft: navLeft, paddingRight: navRight }]}>
           <View style={styles.navRow}>
             <Pressable onPress={goBack} style={styles.iconBtn} accessibilityLabel="Back to the library">
@@ -373,8 +364,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             styles.score,
             {
               paddingLeft: insets.left,
-              paddingRight: insets.right,
-              paddingTop: phoneLandscape ? insets.top + studioNav.icon + studioNav.padB * 2 : 0,
+              paddingRight: edgeRight,
               backgroundColor: light.stage,
             },
           ] : styles.scoreParked}
@@ -402,7 +392,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             styles.seek,
             {
               paddingLeft: 10 + insets.left,
-              paddingRight: 10 + insets.right,
+              paddingRight: 10 + edgeRight,
               paddingBottom: keysShown ? 6 : KEY_LIP + insets.bottom,
             },
           ]}>
@@ -434,7 +424,7 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
             scoreShown ? styles.keyWrap : styles.keyWrapFill,
             {
               paddingLeft: insets.left,
-              paddingRight: insets.right,
+              paddingRight: edgeRight,
               paddingBottom: KEY_LIP + insets.bottom,
             },
           ]}>
@@ -455,6 +445,16 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
           </View>
         ) : null}
       </View>
+      {phoneLandscape ? (
+        <>
+          <Pressable onPress={goBack} style={[styles.iconBtn, styles.floatNav, { top: navTop, left: navLeft }]} accessibilityLabel="Back to the library">
+            <Text style={styles.iconText}>‹</Text>
+          </Pressable>
+          <Pressable onPress={() => setPanel(true)} style={[styles.iconBtn, styles.floatNav, { top: navTop, right: navRight }]} accessibilityLabel="Open studio panel">
+            <Text style={styles.iconText}>☰</Text>
+          </Pressable>
+        </>
+      ) : null}
       {!scoreShown ? (
         <Pressable
           onPress={playback.toggle}
@@ -482,22 +482,26 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         </Pressable>
       </Modal>
       <TempoModal visible={tempoOpen} pieceBpm={pieceBpm} bpm={shownBpm} onChange={setSelectedBpm} onClose={() => setTempoOpen(false)} />
-      {paywall ? <Paywall onClose={() => setPaywall(false)} /> : null}
-      {counting ? (
-        <View
-          pointerEvents="none"
-          collapsable={false}
-          style={[styles.countdown, { top: -bleedY, left: -bleedX, width: width + bleedX * 2, height: height + bleedY * 2 }]}
-        >
+      <Modal
+        visible={counting}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={playback.toggle}
+      >
+        <Pressable style={styles.countdown} onPress={playback.toggle} accessibilityLabel="Cancel count-in">
           <Text style={[styles.countdownNum, { fontSize: Math.min(168, Math.round(width * 0.42)) }]}>{playback.countdown}</Text>
-        </View>
-      ) : null}
+        </Pressable>
+      </Modal>
+      {paywall ? <Paywall onClose={() => setPaywall(false)} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: light.bg, overflow: "visible" },
+  screen: { flex: 1, backgroundColor: light.bg },
+  stageBleed: { backgroundColor: light.stage },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: light.bg, padding: 24, gap: 12 },
   column: { flex: 1 },
   header: { backgroundColor: studioNav.bg, zIndex: 8, elevation: 8 },
@@ -522,7 +526,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  floatNav: { position: "absolute", zIndex: 16, elevation: 16 },
+  floatNav: { position: "absolute", zIndex: 24, elevation: 24 },
   iconText: {
     fontFamily: fonts.bold,
     fontSize: 20,
@@ -532,7 +536,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
     includeFontPadding: false,
   },
-  score: { flex: 1, zIndex: 1 },
+  score: { flex: 1, zIndex: 1, overflow: "hidden" },
   scoreParked: { position: "absolute", width: "100%", height: 1, opacity: 0, overflow: "hidden", zIndex: 0 },
   seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, backgroundColor: light.bg, zIndex: 6, elevation: 6 },
   keyWrap: { backgroundColor: "#070b12" },
@@ -553,9 +557,7 @@ const styles = StyleSheet.create({
   pauseMark: { flexDirection: "row", alignItems: "center", gap: 4 },
   pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: "#fff" },
   countdown: {
-    position: "absolute",
-    zIndex: 80,
-    elevation: 80,
+    flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
     alignItems: "center",
     justifyContent: "center",

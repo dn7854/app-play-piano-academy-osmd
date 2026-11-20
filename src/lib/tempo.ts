@@ -31,16 +31,19 @@ export function backingPlaybackRate(selectedBpm: number, trackBpm: number | null
   return Math.min(1.5, Math.max(0.4, selectedBpm / trackBpm));
 }
 
-const COUNT_IN: Record<string, [number, number]> = {
-  "4/4": [4, 1],
-  "3/4": [3, 1],
-  "2/4": [4, 0.5],
-  "6/8": [6, 0.5],
-  "3/8": [6, 0.5],
-  "6/4": [3, 2],
-};
-
-/** Clicks and the length of one click in quarter-notes. */
-export function countIn(timeSignature: string | null) {
-  return COUNT_IN[timeSignature || "4/4"] ?? [4, 1];
+/**
+ * Clicks, and the length of one click in quarter notes.
+ * The click is always the denominator: /4 a quarter, /8 an eighth, /2 a half.
+ * The count is one bar of those clicks. 2/4 is the exception and counts four quarters,
+ * because one bar is too short to lead in.
+ */
+export function countIn(timeSignature: string | null): [number, number] {
+  const match = /^(\d+)\s*\/\s*(\d+)$/.exec((timeSignature || "4/4").trim());
+  if (!match) return [4, 1];
+  const beats = Number(match[1]);
+  const division = Number(match[2]);
+  if (beats <= 0 || division <= 0) return [4, 1];
+  const quarters = 4 / division;
+  if (beats === 2 && division === 4) return [4, quarters];
+  return [beats, quarters];
 }
