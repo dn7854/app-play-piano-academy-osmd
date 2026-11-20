@@ -59,16 +59,16 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
-function PlayMark({ playing }: { playing: boolean }) {
+function PlayMark({ playing, compact }: { playing: boolean; compact?: boolean }) {
   if (playing) {
     return (
-      <View style={styles.pauseMark}>
-        <View style={styles.pauseBar} />
-        <View style={styles.pauseBar} />
+      <View style={[styles.pauseMark, compact && styles.pauseMarkCompact]}>
+        <View style={[styles.pauseBar, compact && styles.pauseBarCompact]} />
+        <View style={[styles.pauseBar, compact && styles.pauseBarCompact]} />
       </View>
     );
   }
-  return <View style={styles.playMark} />;
+  return <View style={[styles.playMark, compact && styles.playMarkCompact]} />;
 }
 
 export function PieceScreen({ id, collection }: { id: string; collection?: string }) {
@@ -390,18 +390,19 @@ export function PieceScreen({ id, collection }: { id: string; collection?: strin
         {scoreShown ? (
           <View style={[
             styles.seek,
+            !tablet && styles.seekPhone,
             {
               paddingLeft: 10 + insets.left,
               paddingRight: 10 + edgeRight,
-              paddingBottom: keysShown ? 6 : KEY_LIP + insets.bottom,
+              paddingBottom: keysShown ? (tablet ? 6 : 2) : KEY_LIP + insets.bottom,
             },
           ]}>
-            <Pressable onPress={playback.toggle} style={styles.play} accessibilityLabel={transportOn ? "Pause" : "Play"}>
-              <PlayMark playing={transportOn} />
+            <Pressable onPress={playback.toggle} style={[styles.play, !tablet && styles.playPhone]} accessibilityLabel={transportOn ? "Pause" : "Play"}>
+              <PlayMark playing={transportOn} compact={!tablet} />
             </Pressable>
             <Text style={styles.time}>{formatTime(seeking ? seekValue : playback.scoreTime)}</Text>
             <Slider
-              style={{ flex: 1 }}
+              style={tablet ? { flex: 1 } : { flex: 1, height: 28 }}
               minimumValue={0}
               maximumValue={Math.max(1, duration)}
               value={seeking ? seekValue : playback.scoreTime}
@@ -539,10 +540,12 @@ const styles = StyleSheet.create({
   score: { flex: 1, zIndex: 1, overflow: "hidden" },
   scoreParked: { position: "absolute", width: "100%", height: 1, opacity: 0, overflow: "hidden", zIndex: 0 },
   seek: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, backgroundColor: light.bg, zIndex: 6, elevation: 6 },
+  seekPhone: { paddingTop: 2, gap: 6 },
   keyWrap: { backgroundColor: "#070b12" },
   keyWrapFill: { flex: 1, backgroundColor: "#05080f" },
   floatPlay: { position: "absolute", zIndex: 12, elevation: 12, width: 56, height: 56, borderRadius: 28 },
   play: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" },
+  playPhone: { width: 36, height: 36, borderRadius: 18 },
   playMark: {
     width: 0,
     height: 0,
@@ -554,8 +557,11 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
     borderLeftColor: "#fff",
   },
+  playMarkCompact: { marginLeft: 2, borderTopWidth: 5, borderBottomWidth: 5, borderLeftWidth: 9 },
   pauseMark: { flexDirection: "row", alignItems: "center", gap: 4 },
+  pauseMarkCompact: { gap: 3 },
   pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: "#fff" },
+  pauseBarCompact: { width: 3, height: 11 },
   countdown: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
