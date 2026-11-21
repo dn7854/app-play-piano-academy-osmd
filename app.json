@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "com.danijelbrecelj.playpianoacademymobile",
-      "versionCode": 20,
+      "versionCode": 22,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0e141b"

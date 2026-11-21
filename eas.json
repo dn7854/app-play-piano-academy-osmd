@@ -21,6 +21,11 @@
     },
     "production": {
       "autoIncrement": true,
+      "environment": "production",
+      "android": {
+        "credentialsSource": "local",
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT": "d8r_piano_academy_pro",
         "EXPO_PUBLIC_REVENUECAT_PRODUCT_ID": "d8r_piano_academy_pro"

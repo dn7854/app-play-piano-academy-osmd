@@ -17,10 +17,16 @@
  * 3. System bars stay transparent and the window draws into the display cutout.
  *    Status and navigation bars are hidden from MainActivity. Expo's template
  *    leaves enforceNavigationBarContrast on, which paints a scrim behind them.
+ *
+ * 4. Optional hardware. expo-dev-client locks an ML Kit barcode activity to
+ *    portrait, and expo-network's ACCESS_WIFI_STATE implies Wi-Fi. Play then
+ *    treats those as required. The app supports every orientation and mobile
+ *    data, so both features are declared required="false". These elements use
+ *    only the android namespace, which the manifest already has.
  */
 const fs = require("fs");
 const path = require("path");
-const { withAppBuildGradle, withAndroidStyles, AndroidConfig } = require("expo/config-plugins");
+const { withAppBuildGradle, withAndroidStyles, withAndroidManifest, AndroidConfig } = require("expo/config-plugins");
 
 const SIGNING_MARK = "// @d8r-release-signing";
 const OBOE_MARK = "// @d8r-oboe-jnilibs";
@@ -104,6 +110,33 @@ ${OBOE_MARK} end
 `;
 }
 
+/** Features Play would otherwise require because of library manifests. */
+const OPTIONAL_FEATURES = [
+  "android.hardware.screen.portrait",
+  "android.hardware.wifi",
+];
+
+function addOptionalFeatures(manifest) {
+  const root = manifest.manifest;
+  const current = root["uses-feature"];
+  const features = current == null ? [] : Array.isArray(current) ? current : [current];
+  for (const name of OPTIONAL_FEATURES) {
+    const existing = features.find((item) => item?.$?.["android:name"] === name);
+    if (existing) {
+      existing.$["android:required"] = "false";
+      continue;
+    }
+    features.push({
+      $: {
+        "android:name": name,
+        "android:required": "false",
+      },
+    });
+  }
+  root["uses-feature"] = features;
+  return manifest;
+}
+
 module.exports = function withAndroidReleaseFixes(config) {
   config = withAppBuildGradle(config, (cfg) => {
     if (cfg.modResults.language !== "groovy") {
@@ -131,6 +164,11 @@ module.exports = function withAndroidReleaseFixes(config) {
     for (const [name, value] of Object.entries(items)) {
       AndroidConfig.Styles.assignStylesValue(styles, { add: true, parent: "AppTheme", name, value });
     }
+    return cfg;
+  });
+
+  config = withAndroidManifest(config, (cfg) => {
+    cfg.modResults = addOptionalFeatures(cfg.modResults);
     return cfg;
   });
 
